@@ -1,0 +1,3432 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  ENDED
+}
+
+enum BranchType {
+  HEAD_OFFICE
+  RETAIL_STORE
+  WHOLESALE
+  DISTRIBUTION_CENTER
+}
+
+enum WarehouseType {
+  MAIN
+  RETAIL
+  TRANSIT
+  QUARANTINE
+  DAMAGED
+  SERVICE
+}
+
+enum LocationType {
+  ZONE
+  RACK
+  SHELF
+  BIN
+}
+
+enum TrackingMethod {
+  IMEI
+  SERIAL
+  BATCH
+  QUANTITY
+}
+
+enum CostingMethod {
+  SPECIFIC
+  FIFO
+  WEIGHTED_AVERAGE
+}
+
+enum ProductType {
+  SMARTPHONE
+  FEATURE_PHONE
+  TABLET
+  SMARTWATCH
+  ACCESSORY
+  SPARE_PART
+  SERVICE
+  OTHER
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  CRITICAL
+}
+
+model Company {
+  id                     String        @id @default(uuid()) @db.Uuid
+  code                   String        @unique @db.VarChar(20)
+  name                   String        @db.VarChar(160)
+  legalName              String?       @db.VarChar(200)
+  logoUrl                String?       @db.Text
+  registrationNumber     String?       @db.VarChar(80)
+  taxRegistrationNumber  String?       @db.VarChar(80)
+  addressLine1           String?       @db.VarChar(200)
+  addressLine2           String?       @db.VarChar(200)
+  countryCode            String        @default("PK") @db.Char(2)
+  province               String?       @db.VarChar(100)
+  city                   String?       @db.VarChar(100)
+  postalCode             String?       @db.VarChar(20)
+  phone                  String?       @db.VarChar(30)
+  email                  String?       @db.VarChar(190)
+  currencyCode           String        @default("PKR") @db.Char(3)
+  timeZone               String        @default("Asia/Karachi") @db.VarChar(64)
+  fiscalYearStartMonth   Int           @default(7) @db.SmallInt
+  decimalPrecision       Int           @default(2) @db.SmallInt
+  inventoryCostingMethod CostingMethod @default(SPECIFIC)
+  allowNegativeStock     Boolean       @default(false)
+  status                 CompanyStatus @default(ACTIVE)
+  createdAt              DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(3)
+  archivedAt             DateTime?     @db.Timestamptz(3)
+
+  memberships           CompanyMembership[]
+  branches              Branch[]
+  warehouses            Warehouse[]
+  roles                 Role[]
+  categories            ProductCategory[]
+  brands                Brand[]
+  units                 UnitOfMeasure[]
+  taxRules              TaxRule[]
+  products              Product[]
+  variants              ProductVariant[]
+  barcodes              ProductBarcode[]
+  systemSettings        SystemSetting[]
+  documentSequences     DocumentSequence[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  idempotencyRecords    IdempotencyRecord[]
+  attachments           Attachment[]
+  accountGroups         AccountGroup[]
+  accounts              Account[]
+  fiscalYears           FiscalYear[]
+  accountingPeriods     AccountingPeriod[]
+  costCenters           CostCenter[]
+  departments           Department[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  journalEntries        JournalEntry[]
+  bankAccounts          BankAccount[]
+  bankTransactions      BankTransaction[]
+  bankStatements        BankStatement[]
+  bankReconciliations   BankReconciliation[]
+  assetCategories       AssetCategory[]
+  fixedAssets           FixedAsset[]
+  incentivePlans        IncentivePlan[]
+  incentiveCalculations IncentiveCalculation[]
+  incentivePayables     IncentivePayable[]
+  receivedIncentives    ReceivedIncentive[]
+  rebatePrograms        RebateProgram[]
+  rebateCalculations    RebateCalculation[]
+  budgets               Budget[]
+  openingBalanceBatches OpeningBalanceBatch[]
+  financialPeriodCloses FinancialPeriodClose[]
+  physicalStockUnits    PhysicalStockUnit[]
+  deviceIdentifiers     DeviceIdentifier[]
+  inventoryLots         InventoryLot[]
+  stockBalances         StockBalance[]
+  inventoryMovements    InventoryMovement[]
+  inventoryReservations InventoryReservation[]
+  purchaseOrders        PurchaseOrder[]
+  purchaseReceipts      PurchaseReceipt[]
+  qualityInspections    QualityInspection[]
+  salesInvoices         SalesInvoice[]
+  stockReturns          StockReturn[]
+  stockTransfers        StockTransfer[]
+  stockAdjustments      StockAdjustment[]
+  stockCounts           StockCount[]
+  payments              Payment[]
+  priceLists            PriceList[]
+  paymentMethods        PaymentMethod[]
+  supplierItems         SupplierItem[]
+  approvalPolicies      ApprovalPolicy[]
+  savedViews            SavedView[]
+  reportSchedules       ReportSchedule[]
+  boms                  Bom[]
+  productionOrders      ProductionOrder[]
+
+  @@index([status])
+}
+
+model User {
+  id                  String     @id @default(uuid()) @db.Uuid
+  email               String     @unique @db.VarChar(190)
+  fullName            String     @db.VarChar(160)
+  phone               String?    @db.VarChar(30)
+  passwordHash        String     @db.VarChar(100)
+  status              UserStatus @default(INVITED)
+  avatarUrl           String?    @db.Text
+  locale              String     @default("en-PK") @db.VarChar(15)
+  timeZone            String     @default("Asia/Karachi") @db.VarChar(64)
+  forcePasswordChange Boolean    @default(true)
+  failedLoginCount    Int        @default(0)
+  lockedUntil         DateTime?  @db.Timestamptz(3)
+  lastLoginAt         DateTime?  @db.Timestamptz(3)
+  passwordChangedAt   DateTime?  @db.Timestamptz(3)
+  createdAt           DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime   @updatedAt @db.Timestamptz(3)
+  archivedAt          DateTime?  @db.Timestamptz(3)
+
+  memberships                   CompanyMembership[]
+  sessions                      Session[]
+  createdProducts               Product[]                   @relation("ProductCreator")
+  managedWarehouses             Warehouse[]                 @relation("WarehouseManager")
+  auditLogs                     AuditLog[]                  @relation("AuditActor")
+  notifications                 Notification[]              @relation("NotificationRecipient")
+  updatedSettings               SystemSetting[]             @relation("SettingUpdater")
+  attachments                   Attachment[]                @relation("AttachmentUploader")
+  periodsClosed                 AccountingPeriod[]          @relation("PeriodClosedBy")
+  journalsPrepared              JournalEntry[]              @relation("JournalPreparedBy")
+  journalsApproved              JournalEntry[]              @relation("JournalApprovedBy")
+  journalsPosted                JournalEntry[]              @relation("JournalPostedBy")
+  journalsReversed              JournalEntry[]              @relation("JournalReversedBy")
+  salesJournalLines             JournalEntryLine[]          @relation("JournalLineSalesperson")
+  bankReconciliationsPrepared   BankReconciliation[]        @relation("BankReconciliationPreparedBy")
+  bankReconciliationsCompleted  BankReconciliation[]        @relation("BankReconciliationCompletedBy")
+  assetsInCustody               FixedAsset[]                @relation("AssetCustodian")
+  assetTransactionsCreated      AssetTransaction[]          @relation("AssetTransactionCreator")
+  assetDisposalsApproved        AssetDisposal[]             @relation("AssetDisposalApprover")
+  assetsPrepared                FixedAsset[]                @relation("AssetPreparer")
+  assetSchedulesGenerated       AssetDepreciationSchedule[] @relation("AssetScheduleGenerator")
+  budgetsPrepared               Budget[]                    @relation("BudgetCreator")
+  incentiveAwards               IncentiveCalculation[]      @relation("IncentiveRecipientUser")
+  incentiveCalculationsApproved IncentiveCalculation[]      @relation("IncentiveCalculationApprover")
+  incentiveCalculationsPrepared IncentiveCalculation[]      @relation("IncentiveCalculationCalculator")
+  receivedIncentivesPrepared    ReceivedIncentive[]         @relation("ReceivedIncentivePreparer")
+  receivedIncentivesApproved    ReceivedIncentive[]         @relation("ReceivedIncentiveApprover")
+  rebateCalculationsApproved    RebateCalculation[]         @relation("RebateCalculationApprover")
+  rebateCalculationsPrepared    RebateCalculation[]         @relation("RebateCalculationCalculator")
+  budgetsApproved               Budget[]                    @relation("BudgetApprover")
+  savedViews                    SavedView[]
+  reportSchedules               ReportSchedule[]
+  openingBatchesCreated         OpeningBalanceBatch[]       @relation("OpeningBalanceCreator")
+  openingBatchesApproved        OpeningBalanceBatch[]       @relation("OpeningBalanceApprover")
+  periodClosesRequested         FinancialPeriodClose[]      @relation("PeriodCloseRequester")
+  periodClosesApproved          FinancialPeriodClose[]      @relation("PeriodCloseApprover")
+  inventoryMovementsCreated     InventoryMovement[]         @relation("InventoryMovementCreator")
+  inventoryReservationsCreated  InventoryReservation[]      @relation("InventoryReservationCreator")
+  purchaseOrdersPrepared        PurchaseOrder[]             @relation("PurchaseOrderPreparer")
+  purchaseOrdersApproved        PurchaseOrder[]             @relation("PurchaseOrderApprover")
+  purchaseReceiptsPrepared      PurchaseReceipt[]           @relation("PurchaseReceiptPreparer")
+  purchaseReceiptsReceived      PurchaseReceipt[]           @relation("PurchaseReceiptReceiver")
+  qualityInspections            QualityInspection[]         @relation("QualityInspectionInspector")
+  purchaseReceiptsApproved      PurchaseReceipt[]           @relation("PurchaseReceiptApprover")
+  purchaseReceiptsPosted        PurchaseReceipt[]           @relation("PurchaseReceiptPoster")
+  purchaseReceiptsReversed      PurchaseReceipt[]           @relation("PurchaseReceiptReverser")
+  salesInvoicesAsSalesperson    SalesInvoice[]              @relation("SalesInvoiceSalesperson")
+  salesInvoicesPrepared         SalesInvoice[]              @relation("SalesInvoicePreparer")
+  salesInvoicesApproved         SalesInvoice[]              @relation("SalesInvoiceApprover")
+  salesInvoicesPosted           SalesInvoice[]              @relation("SalesInvoicePoster")
+  salesInvoicesReversed         SalesInvoice[]              @relation("SalesInvoiceReverser")
+  stockReturnsPrepared          StockReturn[]               @relation("StockReturnPreparer")
+  stockReturnsApproved          StockReturn[]               @relation("StockReturnApprover")
+  stockReturnsPosted            StockReturn[]               @relation("StockReturnPoster")
+  stockTransfersPrepared        StockTransfer[]             @relation("StockTransferPreparer")
+  stockTransfersApproved        StockTransfer[]             @relation("StockTransferApprover")
+  stockTransfersPosted          StockTransfer[]             @relation("StockTransferPoster")
+  stockTransfersReversed        StockTransfer[]             @relation("StockTransferReverser")
+  stockAdjustmentsPrepared      StockAdjustment[]           @relation("StockAdjustmentPreparer")
+  stockAdjustmentsApproved      StockAdjustment[]           @relation("StockAdjustmentApprover")
+  stockAdjustmentsPosted        StockAdjustment[]           @relation("StockAdjustmentPoster")
+  stockAdjustmentsReversed      StockAdjustment[]           @relation("StockAdjustmentReverser")
+  stockCountsPrepared           StockCount[]                @relation("StockCountPreparer")
+  stockCountsSubmitted          StockCount[]                @relation("StockCountSubmitter")
+  stockCountsPosted             StockCount[]                @relation("StockCountPoster")
+  paymentsPrepared              Payment[]                   @relation("PaymentPreparer")
+  paymentsApproved              Payment[]                   @relation("PaymentApprover")
+  paymentsPosted                Payment[]                   @relation("PaymentPoster")
+  paymentsReversed              Payment[]                   @relation("PaymentReverser")
+
+  @@index([status])
+  @@index([lastLoginAt])
+}
+
+model CompanyMembership {
+  id           String           @id @default(uuid()) @db.Uuid
+  companyId    String           @db.Uuid
+  userId       String           @db.Uuid
+  employeeCode String?          @db.VarChar(30)
+  jobTitle     String?          @db.VarChar(100)
+  status       MembershipStatus @default(ACTIVE)
+  isOwner      Boolean          @default(false)
+  joinedAt     DateTime         @default(now()) @db.Timestamptz(3)
+  endedAt      DateTime?        @db.Timestamptz(3)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(3)
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userRoles UserRole[]
+
+  @@unique([companyId, userId])
+  @@unique([companyId, employeeCode])
+  @@index([userId, status])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.Uuid
+  code        String   @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  isSystem    Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique @db.VarChar(120)
+  module      String   @db.VarChar(60)
+  action      String   @db.VarChar(40)
+  description String   @db.VarChar(240)
+  isSensitive Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  roles RolePermission[]
+
+  @@index([module, action])
+}
+
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  grantedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  id           String    @id @default(uuid()) @db.Uuid
+  membershipId String    @db.Uuid
+  roleId       String    @db.Uuid
+  branchId     String?   @db.Uuid
+  warehouseId  String?   @db.Uuid
+  validFrom    DateTime  @default(now()) @db.Timestamptz(3)
+  validUntil   DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  membership CompanyMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  branch     Branch?           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse  Warehouse?        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([membershipId, roleId])
+  @@index([branchId])
+  @@index([warehouseId])
+}
+
+model Session {
+  id                String    @id @default(uuid()) @db.Uuid
+  tokenHash         String    @unique @db.Char(64)
+  userId            String    @db.Uuid
+  activeCompanyId   String    @db.Uuid
+  activeBranchId    String?   @db.Uuid
+  activeWarehouseId String?   @db.Uuid
+  ipAddress         String?   @db.VarChar(64)
+  userAgent         String?   @db.VarChar(500)
+  expiresAt         DateTime  @db.Timestamptz(3)
+  lastSeenAt        DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
+
+model LoginAttempt {
+  id          String   @id @default(uuid()) @db.Uuid
+  email       String   @db.VarChar(190)
+  ipAddress   String?  @db.VarChar(64)
+  succeeded   Boolean  @default(false)
+  reason      String?  @db.VarChar(100)
+  attemptedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([email, attemptedAt])
+  @@index([ipAddress, attemptedAt])
+}
+
+model Branch {
+  id                    String     @id @default(uuid()) @db.Uuid
+  companyId             String     @db.Uuid
+  code                  String     @db.VarChar(20)
+  name                  String     @db.VarChar(140)
+  type                  BranchType @default(RETAIL_STORE)
+  registrationNumber    String?    @db.VarChar(80)
+  taxRegistrationNumber String?    @db.VarChar(80)
+  addressLine1          String?    @db.VarChar(200)
+  addressLine2          String?    @db.VarChar(200)
+  countryCode           String     @default("PK") @db.Char(2)
+  province              String?    @db.VarChar(100)
+  city                  String?    @db.VarChar(100)
+  phone                 String?    @db.VarChar(30)
+  email                 String?    @db.VarChar(190)
+  documentPrefix        String     @db.VarChar(12)
+  isActive              Boolean    @default(true)
+  createdAt             DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime   @updatedAt @db.Timestamptz(3)
+  archivedAt            DateTime?  @db.Timestamptz(3)
+
+  company                Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  warehouses             Warehouse[]
+  scopedUserRoles        UserRole[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  documentSequences      DocumentSequence[]
+  accounts               Account[]
+  costCenters            CostCenter[]
+  departments            Department[]
+  customers              Customer[]
+  suppliers              Supplier[]
+  journalEntries         JournalEntry[]
+  journalLines           JournalEntryLine[]
+  bankAccounts           BankAccount[]
+  fixedAssets            FixedAsset[]
+  incentivePlans         IncentivePlan[]
+  incentiveCalculations  IncentiveCalculation[]
+  budgets                Budget[]
+  physicalStockUnits     PhysicalStockUnit[]
+  productionOrders       ProductionOrder[]
+  stockBalances          StockBalance[]
+  inventoryMovements     InventoryMovement[]
+  inventoryReservations  InventoryReservation[]
+  purchaseOrders         PurchaseOrder[]
+  purchaseReceipts       PurchaseReceipt[]
+  salesInvoices          SalesInvoice[]
+  stockReturns           StockReturn[]
+  outgoingStockTransfers StockTransfer[]        @relation("StockTransferSourceBranch")
+  incomingStockTransfers StockTransfer[]        @relation("StockTransferDestinationBranch")
+  stockAdjustments       StockAdjustment[]
+  stockCounts            StockCount[]
+  payments               Payment[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, documentPrefix])
+  @@index([companyId, isActive])
+}
+
+model Warehouse {
+  id             String        @id @default(uuid()) @db.Uuid
+  companyId      String        @db.Uuid
+  branchId       String        @db.Uuid
+  code           String        @db.VarChar(24)
+  name           String        @db.VarChar(140)
+  type           WarehouseType @default(MAIN)
+  managerId      String?       @db.Uuid
+  addressLine1   String?       @db.VarChar(200)
+  city           String?       @db.VarChar(100)
+  phone          String?       @db.VarChar(30)
+  allowReceiving Boolean       @default(true)
+  allowDispatch  Boolean       @default(true)
+  isDefault      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  archivedAt     DateTime?     @db.Timestamptz(3)
+
+  company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch                   Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  manager                  User?                     @relation("WarehouseManager", fields: [managerId], references: [id], onDelete: SetNull)
+  locations                WarehouseLocation[]
+  scopedUserRoles          UserRole[]
+  auditLogs                AuditLog[]
+  notifications            Notification[]
+  physicalStockUnits       PhysicalStockUnit[]
+  stockBalances            StockBalance[]
+  inventoryMovements       InventoryMovement[]
+  inventoryReservations    InventoryReservation[]
+  purchaseOrders           PurchaseOrder[]
+  purchaseReceipts         PurchaseReceipt[]
+  salesInvoices            SalesInvoice[]
+  stockReturns             StockReturn[]
+  outgoingStockTransfers   StockTransfer[]           @relation("StockTransferSourceWarehouse")
+  incomingStockTransfers   StockTransfer[]           @relation("StockTransferDestinationWarehouse")
+  stockAdjustments         StockAdjustment[]
+  stockCounts              StockCount[]
+  productionOrdersSource   ProductionOrder[]         @relation("ProductionOrderSourceWarehouse")
+  productionOrdersTarget   ProductionOrder[]         @relation("ProductionOrderTargetWarehouse")
+  productionMaterialIssues ProductionMaterialIssue[]
+
+  @@unique([companyId, code])
+  @@index([branchId, isActive])
+  @@index([companyId, type])
+}
+
+model WarehouseLocation {
+  id           String       @id @default(uuid()) @db.Uuid
+  warehouseId  String       @db.Uuid
+  parentId     String?      @db.Uuid
+  code         String       @db.VarChar(30)
+  name         String       @db.VarChar(100)
+  type         LocationType
+  barcode      String?      @db.VarChar(80)
+  sequence     Int          @default(0)
+  isQuarantine Boolean      @default(false)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+
+  warehouse          Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  parent             WarehouseLocation?  @relation("LocationTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children           WarehouseLocation[] @relation("LocationTree")
+  currentStockUnits  PhysicalStockUnit[]
+  inventoryMovements InventoryMovement[]
+
+  @@unique([warehouseId, code])
+  @@index([warehouseId, parentId, isActive])
+  @@index([barcode])
+}
+
+model ProductCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.Uuid
+  parentId    String?  @db.Uuid
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  company  Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children ProductCategory[] @relation("CategoryTree")
+  products Product[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+}
+
+model Brand {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  code      String   @db.VarChar(30)
+  name      String   @db.VarChar(100)
+  logoUrl   String?  @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+}
+
+model UnitOfMeasure {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @db.Uuid
+  code          String   @db.VarChar(20)
+  name          String   @db.VarChar(60)
+  decimalPlaces Int      @default(0) @db.SmallInt
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([companyId, code])
+}
+
+model TaxRule {
+  id                 String   @id @default(uuid()) @db.Uuid
+  companyId          String   @db.Uuid
+  code               String   @db.VarChar(40)
+  name               String   @db.VarChar(120)
+  rate               Decimal  @db.Decimal(9, 4)
+  appliesToPurchases Boolean  @default(true)
+  appliesToSales     Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  products             Product[]
+  purchaseOrderLines   PurchaseOrderLine[]
+  purchaseReceiptLines PurchaseReceiptLine[]
+  salesInvoiceLines    SalesInvoiceLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+}
+
+model Product {
+  id                    String         @id @default(uuid()) @db.Uuid
+  companyId             String         @db.Uuid
+  categoryId            String         @db.Uuid
+  brandId               String?        @db.Uuid
+  unitId                String         @db.Uuid
+  taxRuleId             String?        @db.Uuid
+  createdById           String         @db.Uuid
+  sku                   String         @db.VarChar(60)
+  name                  String         @db.VarChar(180)
+  model                 String?        @db.VarChar(120)
+  modelCode             String?        @db.VarChar(80)
+  manufacturerPartNo    String?        @db.VarChar(100)
+  description           String?        @db.Text
+  productType           ProductType
+  trackingMethod        TrackingMethod
+  costingMethod         CostingMethod
+  standardPurchasePrice Decimal        @default(0) @db.Decimal(19, 4)
+  taxCategoryCode       String?        @db.VarChar(40)
+  reorderLevel          Decimal        @default(0) @db.Decimal(19, 4)
+  maxStockLevel         Decimal        @default(0) @db.Decimal(19, 4)
+  preferredSupplierId   String?        @db.Uuid
+  imageUrl              String?        @db.Text
+  attributes            Json?
+  status                ProductStatus  @default(ACTIVE)
+  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime       @updatedAt @db.Timestamptz(3)
+  archivedAt            DateTime?      @db.Timestamptz(3)
+
+  company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  category                 ProductCategory           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand                    Brand?                    @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  unit                     UnitOfMeasure             @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  taxRule                  TaxRule?                  @relation(fields: [taxRuleId], references: [id], onDelete: Restrict)
+  preferredSupplier        Supplier?                 @relation("PreferredSupplierProducts", fields: [preferredSupplierId], references: [id], onDelete: Restrict)
+  supplierItems            SupplierItem[]
+  createdBy                User                      @relation("ProductCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  variants                 ProductVariant[]
+  barcodes                 ProductBarcode[]
+  physicalStockUnits       PhysicalStockUnit[]
+  inventoryLots            InventoryLot[]
+  stockBalances            StockBalance[]
+  inventoryMovements       InventoryMovement[]
+  inventoryReservations    InventoryReservation[]
+  purchaseOrderLines       PurchaseOrderLine[]
+  purchaseReceiptLines     PurchaseReceiptLine[]
+  salesInvoiceLines        SalesInvoiceLine[]
+  stockReturnLines         StockReturnLine[]
+  stockTransferLines       StockTransferLine[]
+  stockAdjustmentLines     StockAdjustmentLine[]
+  stockCountLines          StockCountLine[]
+  boms                     Bom[]
+  bomItems                 BomItem[]
+  productionOrders         ProductionOrder[]
+  productionMaterialIssues ProductionMaterialIssue[]
+
+  @@unique([companyId, sku])
+  @@index([companyId, status, productType])
+  @@index([companyId, brandId, model])
+  @@index([categoryId])
+  @@index([taxRuleId])
+  @@index([companyId, preferredSupplierId])
+}
+
+model ProductVariant {
+  id                  String   @id @default(uuid()) @db.Uuid
+  companyId           String   @db.Uuid
+  productId           String   @db.Uuid
+  sku                 String   @db.VarChar(60)
+  name                String   @db.VarChar(160)
+  color               String?  @db.VarChar(60)
+  ramGb               Int?     @db.SmallInt
+  storageGb           Int?
+  networkType         String?  @db.VarChar(40)
+  simConfiguration    String?  @db.VarChar(40)
+  regionVariant       String?  @db.VarChar(80)
+  purchasePrice       Decimal  @default(0) @db.Decimal(19, 4)
+  wholesalePrice      Decimal  @default(0) @db.Decimal(19, 4)
+  retailPrice         Decimal  @default(0) @db.Decimal(19, 4)
+  minimumSellingPrice Decimal  @default(0) @db.Decimal(19, 4)
+  attributes          Json?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+
+  company                  Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product                  Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  barcodes                 ProductBarcode[]
+  physicalStockUnits       PhysicalStockUnit[]
+  inventoryLots            InventoryLot[]
+  stockBalances            StockBalance[]
+  inventoryMovements       InventoryMovement[]
+  inventoryReservations    InventoryReservation[]
+  purchaseOrderLines       PurchaseOrderLine[]
+  purchaseReceiptLines     PurchaseReceiptLine[]
+  salesInvoiceLines        SalesInvoiceLine[]
+  stockReturnLines         StockReturnLine[]
+  stockTransferLines       StockTransferLine[]
+  stockAdjustmentLines     StockAdjustmentLine[]
+  stockCountLines          StockCountLine[]
+  boms                     Bom[]
+  bomItems                 BomItem[]
+  productionOrders         ProductionOrder[]
+  productionMaterialIssues ProductionMaterialIssue[]
+  priceListItems           PriceListItem[]
+  supplierItems            SupplierItem[]
+
+  @@unique([companyId, sku])
+  @@index([productId, isActive])
+  @@index([companyId, color, storageGb])
+}
+
+model ProductBarcode {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  productId String   @db.Uuid
+  variantId String?  @db.Uuid
+  barcode   String   @db.VarChar(100)
+  type      String   @default("EAN13") @db.VarChar(20)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, barcode])
+  @@index([productId])
+  @@index([variantId])
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.Uuid
+  key         String   @db.VarChar(100)
+  value       Json
+  isSecret    Boolean  @default(false)
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  updatedBy User?   @relation("SettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, key])
+}
+
+model DocumentSequence {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @db.Uuid
+  branchId     String   @db.Uuid
+  documentType String   @db.VarChar(50)
+  prefix       String   @db.VarChar(20)
+  fiscalYear   String   @db.VarChar(12)
+  nextValue    BigInt   @default(1)
+  padding      Int      @default(6) @db.SmallInt
+  version      Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, branchId, documentType, fiscalYear])
+  @@index([companyId, documentType])
+}
+
+model AuditLog {
+  id              String       @id @default(uuid()) @db.Uuid
+  companyId       String       @db.Uuid
+  actorId         String?      @db.Uuid
+  branchId        String?      @db.Uuid
+  warehouseId     String?      @db.Uuid
+  action          String       @db.VarChar(80)
+  module          String       @db.VarChar(60)
+  entityType      String       @db.VarChar(80)
+  entityId        String?      @db.VarChar(80)
+  entityReference String?      @db.VarChar(120)
+  outcome         AuditOutcome @default(SUCCESS)
+  reason          String?      @db.Text
+  previousValues  Json?
+  newValues       Json?
+  metadata        Json?
+  ipAddress       String?      @db.VarChar(64)
+  userAgent       String?      @db.VarChar(500)
+  requestId       String?      @db.VarChar(80)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  branch    Branch?    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@index([companyId, module, action, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt(sort: Desc)])
+}
+
+model Notification {
+  id          String               @id @default(uuid()) @db.Uuid
+  companyId   String               @db.Uuid
+  recipientId String               @db.Uuid
+  branchId    String?              @db.Uuid
+  warehouseId String?              @db.Uuid
+  type        String               @db.VarChar(60)
+  severity    NotificationSeverity @default(INFO)
+  title       String               @db.VarChar(180)
+  message     String               @db.Text
+  actionUrl   String?              @db.Text
+  entityType  String?              @db.VarChar(80)
+  entityId    String?              @db.VarChar(80)
+  readAt      DateTime?            @db.Timestamptz(3)
+  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  recipient User       @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  branch    Branch?    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([recipientId, readAt, createdAt(sort: Desc)])
+  @@index([companyId, type, createdAt(sort: Desc)])
+}
+
+model IdempotencyRecord {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @db.Uuid
+  scope        String    @db.VarChar(80)
+  key          String    @db.VarChar(120)
+  requestHash  String    @db.Char(64)
+  responseCode Int?
+  responseBody Json?
+  lockedUntil  DateTime? @db.Timestamptz(3)
+  completedAt  DateTime? @db.Timestamptz(3)
+  expiresAt    DateTime  @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, scope, key])
+  @@index([expiresAt])
+}
+
+model Attachment {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @db.Uuid
+  uploadedById  String    @db.Uuid
+  entityType    String    @db.VarChar(80)
+  entityId      String    @db.VarChar(80)
+  originalName  String    @db.VarChar(240)
+  storageKey    String    @unique @db.VarChar(500)
+  mimeType      String    @db.VarChar(120)
+  sizeBytes     BigInt
+  sha256        String    @db.Char(64)
+  isQuarantined Boolean   @default(true)
+  scannedAt     DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  uploadedBy User    @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, entityType, entityId])
+  @@index([sha256])
+}
+
+enum AccountClass {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COGS
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum JournalStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  POSTED
+  REVERSED
+  REJECTED
+}
+
+enum JournalType {
+  GENERAL
+  OPENING
+  ADJUSTMENT
+  ACCRUAL
+  PREPAYMENT
+  DEPRECIATION
+  RECLASSIFICATION
+  REVERSAL
+  CLOSING
+  SYSTEM
+}
+
+enum PeriodStatus {
+  OPEN
+  SOFT_CLOSED
+  CLOSED
+}
+
+enum CashFlowActivity {
+  NONE
+  OPERATING
+  INVESTING
+  FINANCING
+}
+
+enum PartyStatus {
+  ACTIVE
+  ON_HOLD
+  INACTIVE
+  ARCHIVED
+}
+
+enum BankReconciliationStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  REOPENED
+}
+
+enum AssetStatus {
+  DRAFT
+  ACTIVE
+  FULLY_DEPRECIATED
+  IMPAIRED
+  HELD_FOR_SALE
+  DISPOSED
+  ARCHIVED
+}
+
+enum DepreciationMethod {
+  NONE
+  STRAIGHT_LINE
+  DECLINING_BALANCE
+}
+
+enum AssetTransactionType {
+  ACQUISITION
+  CAPITALIZATION
+  DEPRECIATION
+  TRANSFER
+  IMPAIRMENT
+  REVALUATION
+  DISPOSAL
+  SALE
+}
+
+enum ScheduleStatus {
+  PLANNED
+  POSTED
+  REVERSED
+}
+
+enum IncentiveType {
+  FIXED_PER_UNIT
+  PERCENT_NET_SALES
+  MODEL_WISE
+  BRAND_WISE
+  QUANTITY_SLAB
+  SALES_TARGET
+  BRANCH_TARGET
+  DEALER
+  CAMPAIGN
+}
+
+enum IncentiveRecipientType {
+  USER
+  CUSTOMER
+  BRANCH
+  OTHER
+}
+
+enum IncentiveStatus {
+  DRAFT
+  CALCULATED
+  SUBMITTED
+  APPROVED
+  ACCRUED
+  PARTIALLY_PAID
+  PAID
+  PARTIALLY_RECEIVED
+  RECEIVED
+  REJECTED
+  REVERSED
+}
+
+enum RebateDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum RebateStatus {
+  DRAFT
+  CALCULATED
+  SUBMITTED
+  APPROVED
+  ACCRUED
+  PARTIALLY_SETTLED
+  SETTLED
+  REJECTED
+  REVERSED
+}
+
+enum BudgetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REVISED
+  CLOSED
+}
+
+enum OpeningBalanceStatus {
+  DRAFT
+  VALIDATED
+  APPROVED
+  POSTED
+  REVERSED
+}
+
+model AccountGroup {
+  id               String       @id @default(uuid()) @db.Uuid
+  companyId        String       @db.Uuid
+  parentId         String?      @db.Uuid
+  code             String       @db.VarChar(30)
+  name             String       @db.VarChar(120)
+  accountClass     AccountClass
+  statementSection String       @db.VarChar(80)
+  sequence         Int          @default(0)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  parent   AccountGroup?  @relation("AccountGroupTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children AccountGroup[] @relation("AccountGroupTree")
+  accounts Account[]
+
+  @@unique([companyId, code])
+  @@index([companyId, accountClass, sequence])
+}
+
+model Account {
+  id                     String           @id @default(uuid()) @db.Uuid
+  companyId              String           @db.Uuid
+  groupId                String?          @db.Uuid
+  parentId               String?          @db.Uuid
+  branchId               String?          @db.Uuid
+  costCenterId           String?          @db.Uuid
+  code                   String           @db.VarChar(30)
+  name                   String           @db.VarChar(160)
+  accountClass           AccountClass
+  subclass               String           @db.VarChar(80)
+  accountType            String           @db.VarChar(80)
+  normalBalance          NormalBalance
+  openingBalance         Decimal          @default(0) @db.Decimal(19, 4)
+  openingBalanceDate     DateTime?        @db.Date
+  currencyCode           String?          @db.Char(3)
+  isControlAccount       Boolean          @default(false)
+  reconciliationRequired Boolean          @default(false)
+  allowManualJournal     Boolean          @default(true)
+  cashFlowActivity       CashFlowActivity @default(NONE)
+  isActive               Boolean          @default(true)
+  description            String?          @db.Text
+  createdAt              DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @db.Timestamptz(3)
+  archivedAt             DateTime?        @db.Timestamptz(3)
+
+  company                     Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  group                       AccountGroup?        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  parent                      Account?             @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children                    Account[]            @relation("AccountTree")
+  branch                      Branch?              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  costCenter                  CostCenter?          @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  journalLines                JournalEntryLine[]
+  bankAccounts                BankAccount[]
+  assetCostCategories         AssetCategory[]      @relation("CategoryAssetAccount")
+  assetAccumCategories        AssetCategory[]      @relation("CategoryAccumAccount")
+  assetExpenseCategories      AssetCategory[]      @relation("CategoryExpenseAccount")
+  assetDisposalCategories     AssetCategory[]      @relation("CategoryDisposalAccount")
+  fixedAssetCostMappings      FixedAsset[]         @relation("FixedAssetCostAccount")
+  fixedAssetAccumMappings     FixedAsset[]         @relation("FixedAssetAccumAccount")
+  fixedAssetExpenseMappings   FixedAsset[]         @relation("FixedAssetExpenseAccount")
+  fixedAssetDisposalMappings  FixedAsset[]         @relation("FixedAssetDisposalAccount")
+  incentiveExpensePlans       IncentivePlan[]      @relation("IncentiveExpenseAccount")
+  incentivePayablePlans       IncentivePlan[]      @relation("IncentivePayableAccount")
+  incentiveIncomePlans        IncentivePlan[]      @relation("IncentiveIncomeAccount")
+  incentiveReceivablePlans    IncentivePlan[]      @relation("IncentiveReceivableAccount")
+  receivedIncentiveIncome     ReceivedIncentive[]  @relation("ReceivedIncentiveIncomeAccount")
+  receivedIncentiveReceivable ReceivedIncentive[]  @relation("ReceivedIncentiveReceivableAccount")
+  rebatePrimaryPrograms       RebateProgram[]      @relation("RebatePrimaryAccount")
+  rebateSettlementPrograms    RebateProgram[]      @relation("RebateSettlementAccount")
+  budgetLines                 BudgetLine[]
+  openingBalanceLines         OpeningBalanceLine[]
+  payments                    Payment[]            @relation("PaymentAccount")
+  paymentMethods              PaymentMethod[]      @relation("PaymentMethodCashAccount")
+
+  @@unique([companyId, code])
+  @@index([companyId, accountClass, isActive])
+  @@index([companyId, accountType])
+  @@index([parentId])
+}
+
+model FiscalYear {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  code      String   @db.VarChar(12)
+  name      String   @db.VarChar(80)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isCurrent Boolean  @default(false)
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  periods        AccountingPeriod[]
+  budgets        Budget[]
+  openingBatches OpeningBalanceBatch[]
+
+  @@unique([companyId, code])
+  @@index([companyId, startDate, endDate])
+}
+
+model AccountingPeriod {
+  id           String       @id @default(uuid()) @db.Uuid
+  companyId    String       @db.Uuid
+  fiscalYearId String       @db.Uuid
+  number       Int          @db.SmallInt
+  name         String       @db.VarChar(40)
+  quarter      Int          @db.SmallInt
+  startDate    DateTime     @db.Date
+  endDate      DateTime     @db.Date
+  status       PeriodStatus @default(OPEN)
+  closedAt     DateTime?    @db.Timestamptz(3)
+  closedById   String?      @db.Uuid
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+
+  company      Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  fiscalYear   FiscalYear             @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  closedBy     User?                  @relation("PeriodClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+  journals     JournalEntry[]
+  budgetLines  BudgetLine[]
+  closeRecords FinancialPeriodClose[]
+
+  @@unique([companyId, fiscalYearId, number])
+  @@index([companyId, startDate, endDate, status])
+}
+
+model CostCenter {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @db.Uuid
+  branchId    String?  @db.Uuid
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(120)
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  accounts     Account[]
+  journals     JournalEntry[]
+  journalLines JournalEntryLine[]
+  budgets      Budget[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId, isActive])
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  branchId  String?  @db.Uuid
+  code      String   @db.VarChar(30)
+  name      String   @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch?            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  journals     JournalEntry[]
+  journalLines JournalEntryLine[]
+  assets       FixedAsset[]
+  budgets      Budget[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId, isActive])
+}
+
+model Customer {
+  id               String      @id @default(uuid()) @db.Uuid
+  companyId        String      @db.Uuid
+  branchId         String?     @db.Uuid
+  code             String      @db.VarChar(30)
+  name             String      @db.VarChar(160)
+  customerType     String      @default("RETAIL") @db.VarChar(40)
+  phone            String?     @db.VarChar(30)
+  email            String?     @db.VarChar(190)
+  address          String?     @db.Text
+  taxNumber        String?     @db.VarChar(80)
+  creditLimit      Decimal     @default(0) @db.Decimal(19, 4)
+  paymentTermsDays Int         @default(0)
+  openingBalance   Decimal     @default(0) @db.Decimal(19, 4)
+  priceListId      String?     @db.Uuid
+  status           PartyStatus @default(ACTIVE)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+  archivedAt       DateTime?   @db.Timestamptz(3)
+
+  company               Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch                Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  journalLines          JournalEntryLine[]
+  incentiveCalculations IncentiveCalculation[]
+  rebatePrograms        RebateProgram[]
+  rebateCalculations    RebateCalculation[]
+  openingBalanceLines   OpeningBalanceLine[]
+  salesInvoices         SalesInvoice[]
+  stockReturns          StockReturn[]
+  payments              Payment[]
+  priceList             PriceList?             @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, code])
+  @@index([companyId, name, status])
+  @@index([priceListId])
+  @@index([companyId, phone])
+}
+
+model Supplier {
+  id               String      @id @default(uuid()) @db.Uuid
+  companyId        String      @db.Uuid
+  branchId         String?     @db.Uuid
+  code             String      @db.VarChar(30)
+  name             String      @db.VarChar(160)
+  contactPerson    String?     @db.VarChar(120)
+  phone            String?     @db.VarChar(30)
+  email            String?     @db.VarChar(190)
+  address          String?     @db.Text
+  taxNumber        String?     @db.VarChar(80)
+  creditLimit      Decimal     @default(0) @db.Decimal(19, 4)
+  paymentTermsDays Int         @default(0)
+  openingBalance   Decimal     @default(0) @db.Decimal(19, 4)
+  status           PartyStatus @default(ACTIVE)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+  archivedAt       DateTime?   @db.Timestamptz(3)
+
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch               Branch?              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  journalLines         JournalEntryLine[]
+  fixedAssets          FixedAsset[]
+  receivedIncentives   ReceivedIncentive[]
+  rebatePrograms       RebateProgram[]
+  rebateCalculations   RebateCalculation[]
+  openingBalanceLines  OpeningBalanceLine[]
+  purchaseOrders       PurchaseOrder[]
+  purchaseReceipts     PurchaseReceipt[]
+  stockReturns         StockReturn[]
+  payments             Payment[]
+  preferredForProducts Product[]            @relation("PreferredSupplierProducts")
+  items                SupplierItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId, name, status])
+}
+
+model JournalEntry {
+  id                   String           @id @default(uuid()) @db.Uuid
+  companyId            String           @db.Uuid
+  branchId             String           @db.Uuid
+  periodId             String           @db.Uuid
+  costCenterId         String?          @db.Uuid
+  departmentId         String?          @db.Uuid
+  voucherNumber        String           @db.VarChar(60)
+  voucherDate          DateTime         @db.Date
+  postingDate          DateTime         @db.Date
+  voucherType          JournalType
+  status               JournalStatus    @default(DRAFT)
+  narration            String           @db.Text
+  referenceDocument    String?          @db.VarChar(120)
+  sourceModule         String           @default("MANUAL") @db.VarChar(60)
+  sourceDocumentType   String?          @db.VarChar(80)
+  sourceDocumentId     String?          @db.VarChar(80)
+  sourceDocumentNumber String?          @db.VarChar(80)
+  cashFlowActivity     CashFlowActivity @default(NONE)
+  idempotencyKey       String?          @db.VarChar(120)
+  totalDebit           Decimal          @default(0) @db.Decimal(19, 4)
+  totalCredit          Decimal          @default(0) @db.Decimal(19, 4)
+  preparedById         String           @db.Uuid
+  approvedById         String?          @db.Uuid
+  postedById           String?          @db.Uuid
+  reversedById         String?          @db.Uuid
+  reversalOfId         String?          @db.Uuid
+  approvedAt           DateTime?        @db.Timestamptz(3)
+  postedAt             DateTime?        @db.Timestamptz(3)
+  reversedAt           DateTime?        @db.Timestamptz(3)
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(3)
+
+  company                   Company                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch                    Branch                      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  period                    AccountingPeriod            @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  costCenter                CostCenter?                 @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  department                Department?                 @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  preparedBy                User                        @relation("JournalPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy                User?                       @relation("JournalApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy                  User?                       @relation("JournalPostedBy", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy                User?                       @relation("JournalReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+  reversalOf                JournalEntry?               @relation("JournalReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals                 JournalEntry[]              @relation("JournalReversal")
+  lines                     JournalEntryLine[]
+  bankTransactions          BankTransaction[]
+  assetTransactions         AssetTransaction[]
+  depreciationSchedules     AssetDepreciationSchedule[]
+  assetDisposals            AssetDisposal[]
+  incentiveCalculations     IncentiveCalculation[]
+  incentivePayables         IncentivePayable[]
+  incentivePayments         IncentivePayment[]
+  receivedIncentives        ReceivedIncentive[]
+  receivedIncentivePayments ReceivedIncentivePayment[]
+  rebateCalculations        RebateCalculation[]
+  rebateReceivables         RebateReceivable[]
+  rebateReceipts            RebateReceipt[]
+  rebatePayables            RebatePayable[]
+  rebatePayments            RebatePayment[]
+  openingBatches            OpeningBalanceBatch[]
+  periodCloses              FinancialPeriodClose[]
+  inventoryMovements        InventoryMovement[]
+  purchaseReceipts          PurchaseReceipt[]
+  salesInvoices             SalesInvoice[]
+  stockReturns              StockReturn[]
+  stockAdjustments          StockAdjustment[]
+  payments                  Payment[]
+
+  @@unique([companyId, voucherNumber])
+  @@unique([companyId, sourceModule, idempotencyKey])
+  @@index([companyId, postingDate, status])
+  @@index([companyId, sourceModule, sourceDocumentId])
+  @@index([periodId, status])
+}
+
+model JournalEntryLine {
+  id            String    @id @default(uuid()) @db.Uuid
+  entryId       String    @db.Uuid
+  accountId     String    @db.Uuid
+  branchId      String    @db.Uuid
+  costCenterId  String?   @db.Uuid
+  departmentId  String?   @db.Uuid
+  customerId    String?   @db.Uuid
+  supplierId    String?   @db.Uuid
+  bankAccountId String?   @db.Uuid
+  salespersonId String?   @db.Uuid
+  lineNumber    Int       @db.SmallInt
+  description   String    @db.VarChar(500)
+  debit         Decimal   @default(0) @db.Decimal(19, 4)
+  credit        Decimal   @default(0) @db.Decimal(19, 4)
+  currencyCode  String    @db.Char(3)
+  exchangeRate  Decimal   @default(1) @db.Decimal(19, 8)
+  baseDebit     Decimal   @default(0) @db.Decimal(19, 4)
+  baseCredit    Decimal   @default(0) @db.Decimal(19, 4)
+  invoiceNumber String?   @db.VarChar(80)
+  dueDate       DateTime? @db.Date
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  entry                 JournalEntry        @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  account               Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  branch                Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  costCenter            CostCenter?         @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  department            Department?         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  customer              Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier              Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  bankAccount           BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  salesperson           User?               @relation("JournalLineSalesperson", fields: [salespersonId], references: [id], onDelete: Restrict)
+  bankTransaction       BankTransaction?
+  matchedStatementLines BankStatementLine[]
+
+  @@unique([entryId, lineNumber])
+  @@index([accountId, entryId])
+  @@index([customerId, dueDate])
+  @@index([supplierId, dueDate])
+  @@index([bankAccountId])
+  @@index([salespersonId])
+}
+
+model BankAccount {
+  id                     String    @id @default(uuid()) @db.Uuid
+  companyId              String    @db.Uuid
+  branchId               String    @db.Uuid
+  glAccountId            String    @db.Uuid
+  code                   String    @db.VarChar(30)
+  bankName               String    @db.VarChar(140)
+  accountTitle           String    @db.VarChar(160)
+  accountNumberEncrypted Bytes?
+  accountNumberLast4     String?   @db.VarChar(4)
+  iban                   String?   @db.VarChar(40)
+  bankBranchName         String?   @db.VarChar(120)
+  currencyCode           String    @db.Char(3)
+  openingBalance         Decimal   @default(0) @db.Decimal(19, 4)
+  openingDate            DateTime? @db.Date
+  authorizedUserIds      Json?
+  isActive               Boolean   @default(true)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(3)
+
+  company                   Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch                    Branch                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  glAccount                 Account                    @relation(fields: [glAccountId], references: [id], onDelete: Restrict)
+  journalLines              JournalEntryLine[]
+  transactions              BankTransaction[]
+  statements                BankStatement[]
+  reconciliations           BankReconciliation[]
+  incentivePayments         IncentivePayment[]
+  receivedIncentivePayments ReceivedIncentivePayment[]
+  rebateReceipts            RebateReceipt[]
+  rebatePayments            RebatePayment[]
+  openingBalanceLines       OpeningBalanceLine[]
+  payments                  Payment[]                  @relation("PaymentBankAccount")
+  paymentMethods            PaymentMethod[]            @relation("PaymentMethodBankAccount")
+
+  @@unique([companyId, code])
+  @@unique([companyId, glAccountId])
+  @@index([companyId, isActive])
+}
+
+model BankTransaction {
+  id                   String    @id @default(uuid()) @db.Uuid
+  companyId            String    @db.Uuid
+  bankAccountId        String    @db.Uuid
+  journalEntryId       String    @db.Uuid
+  journalLineId        String    @unique @db.Uuid
+  transactionType      String    @db.VarChar(50)
+  transactionDate      DateTime  @db.Date
+  valueDate            DateTime? @db.Date
+  bankReference        String?   @db.VarChar(120)
+  description          String    @db.VarChar(500)
+  deposit              Decimal   @default(0) @db.Decimal(19, 4)
+  withdrawal           Decimal   @default(0) @db.Decimal(19, 4)
+  reconciliationStatus String    @default("UNRECONCILED") @db.VarChar(30)
+  reconciledAt         DateTime? @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry     @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  journalLine  JournalEntryLine @relation(fields: [journalLineId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, bankAccountId, transactionDate])
+  @@index([reconciliationStatus])
+}
+
+model BankStatement {
+  id               String   @id @default(uuid()) @db.Uuid
+  companyId        String   @db.Uuid
+  bankAccountId    String   @db.Uuid
+  statementNumber  String?  @db.VarChar(80)
+  periodStart      DateTime @db.Date
+  periodEnd        DateTime @db.Date
+  openingBalance   Decimal  @db.Decimal(19, 4)
+  closingBalance   Decimal  @db.Decimal(19, 4)
+  importedFileName String?  @db.VarChar(240)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount    BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  lines          BankStatementLine[]
+  reconciliation BankReconciliation?
+
+  @@unique([bankAccountId, periodStart, periodEnd])
+  @@index([companyId, periodEnd])
+}
+
+model BankStatementLine {
+  id                   String    @id @default(uuid()) @db.Uuid
+  statementId          String    @db.Uuid
+  matchedJournalLineId String?   @db.Uuid
+  transactionDate      DateTime  @db.Date
+  valueDate            DateTime? @db.Date
+  reference            String?   @db.VarChar(120)
+  description          String    @db.VarChar(500)
+  deposit              Decimal   @default(0) @db.Decimal(19, 4)
+  withdrawal           Decimal   @default(0) @db.Decimal(19, 4)
+  isMatched            Boolean   @default(false)
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+
+  statement          BankStatement     @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  matchedJournalLine JournalEntryLine? @relation(fields: [matchedJournalLineId], references: [id], onDelete: Restrict)
+
+  @@index([statementId, transactionDate])
+  @@index([matchedJournalLineId])
+}
+
+model BankReconciliation {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  companyId           String                   @db.Uuid
+  bankAccountId       String                   @db.Uuid
+  statementId         String                   @unique @db.Uuid
+  status              BankReconciliationStatus @default(DRAFT)
+  bookBalance         Decimal                  @db.Decimal(19, 4)
+  statementBalance    Decimal                  @db.Decimal(19, 4)
+  outstandingDeposits Decimal                  @default(0) @db.Decimal(19, 4)
+  outstandingPayments Decimal                  @default(0) @db.Decimal(19, 4)
+  adjustedBalance     Decimal                  @db.Decimal(19, 4)
+  preparedById        String                   @db.Uuid
+  completedById       String?                  @db.Uuid
+  completedAt         DateTime?                @db.Timestamptz(3)
+  reopenedReason      String?                  @db.Text
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(3)
+
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  statement   BankStatement @relation(fields: [statementId], references: [id], onDelete: Restrict)
+  preparedBy  User          @relation("BankReconciliationPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  completedBy User?         @relation("BankReconciliationCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, bankAccountId, status])
+}
+
+model AssetCategory {
+  id                      String             @id @default(uuid()) @db.Uuid
+  companyId               String             @db.Uuid
+  code                    String             @db.VarChar(30)
+  name                    String             @db.VarChar(120)
+  depreciable             Boolean            @default(true)
+  defaultUsefulLifeMonths Int?
+  defaultMethod           DepreciationMethod @default(STRAIGHT_LINE)
+  defaultRate             Decimal?           @db.Decimal(9, 6)
+  assetAccountId          String             @db.Uuid
+  accumulatedAccountId    String             @db.Uuid
+  expenseAccountId        String             @db.Uuid
+  disposalAccountId       String             @db.Uuid
+  isActive                Boolean            @default(true)
+  createdAt               DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime           @updatedAt @db.Timestamptz(3)
+
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  assetAccount       Account      @relation("CategoryAssetAccount", fields: [assetAccountId], references: [id], onDelete: Restrict)
+  accumulatedAccount Account      @relation("CategoryAccumAccount", fields: [accumulatedAccountId], references: [id], onDelete: Restrict)
+  expenseAccount     Account      @relation("CategoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  disposalAccount    Account      @relation("CategoryDisposalAccount", fields: [disposalAccountId], references: [id], onDelete: Restrict)
+  assets             FixedAsset[]
+
+  @@unique([companyId, code])
+}
+
+model FixedAsset {
+  id                      String             @id @default(uuid()) @db.Uuid
+  companyId               String             @db.Uuid
+  categoryId              String             @db.Uuid
+  supplierId              String?            @db.Uuid
+  branchId                String             @db.Uuid
+  departmentId            String?            @db.Uuid
+  custodianId             String?            @db.Uuid
+  assetAccountId          String             @db.Uuid
+  accumulatedAccountId    String             @db.Uuid
+  expenseAccountId        String             @db.Uuid
+  disposalAccountId       String             @db.Uuid
+  preparedById            String?            @db.Uuid
+  code                    String             @db.VarChar(40)
+  name                    String             @db.VarChar(180)
+  description             String?            @db.Text
+  serialNumber            String?            @db.VarChar(120)
+  purchaseInvoice         String?            @db.VarChar(80)
+  purchaseDate            DateTime           @db.Date
+  capitalizationDate      DateTime           @db.Date
+  depreciationStartDate   DateTime?          @db.Date
+  purchaseCost            Decimal            @db.Decimal(19, 4)
+  additionalCost          Decimal            @default(0) @db.Decimal(19, 4)
+  residualValue           Decimal            @default(0) @db.Decimal(19, 4)
+  usefulLifeMonths        Int?
+  depreciationMethod      DepreciationMethod
+  depreciationRate        Decimal?           @db.Decimal(9, 6)
+  accumulatedDepreciation Decimal            @default(0) @db.Decimal(19, 4)
+  netBookValue            Decimal            @db.Decimal(19, 4)
+  assetLocation           String?            @db.VarChar(180)
+  status                  AssetStatus        @default(DRAFT)
+  createdAt               DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime           @updatedAt @db.Timestamptz(3)
+
+  company             Company                     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  category            AssetCategory               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  supplier            Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  branch              Branch                      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  department          Department?                 @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  custodian           User?                       @relation("AssetCustodian", fields: [custodianId], references: [id], onDelete: Restrict)
+  preparedBy          User?                       @relation("AssetPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  assetAccount        Account                     @relation("FixedAssetCostAccount", fields: [assetAccountId], references: [id], onDelete: Restrict)
+  accumulatedAccount  Account                     @relation("FixedAssetAccumAccount", fields: [accumulatedAccountId], references: [id], onDelete: Restrict)
+  expenseAccount      Account                     @relation("FixedAssetExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  disposalAccount     Account                     @relation("FixedAssetDisposalAccount", fields: [disposalAccountId], references: [id], onDelete: Restrict)
+  schedules           AssetDepreciationSchedule[]
+  transactions        AssetTransaction[]
+  disposal            AssetDisposal?
+  openingBalanceLines OpeningBalanceLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, categoryId, status])
+  @@index([companyId, branchId, assetLocation])
+  @@index([serialNumber])
+}
+
+model AssetDepreciationSchedule {
+  id                  String         @id @default(uuid()) @db.Uuid
+  assetId             String         @db.Uuid
+  journalEntryId      String?        @db.Uuid
+  generatedById       String?        @db.Uuid
+  periodDate          DateTime       @db.Date
+  openingNetBookValue Decimal        @db.Decimal(19, 4)
+  depreciationAmount  Decimal        @db.Decimal(19, 4)
+  closingNetBookValue Decimal        @db.Decimal(19, 4)
+  status              ScheduleStatus @default(PLANNED)
+  postedAt            DateTime?      @db.Timestamptz(3)
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+
+  asset        FixedAsset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  generatedBy  User?         @relation("AssetScheduleGenerator", fields: [generatedById], references: [id], onDelete: Restrict)
+
+  @@unique([assetId, periodDate])
+  @@index([periodDate, status])
+}
+
+model AssetTransaction {
+  id              String               @id @default(uuid()) @db.Uuid
+  assetId         String               @db.Uuid
+  journalEntryId  String?              @db.Uuid
+  type            AssetTransactionType
+  transactionDate DateTime             @db.Date
+  amount          Decimal              @db.Decimal(19, 4)
+  description     String               @db.Text
+  previousValues  Json?
+  newValues       Json?
+  createdById     String               @db.Uuid
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+
+  asset        FixedAsset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  createdBy    User          @relation("AssetTransactionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([assetId, transactionDate])
+}
+
+model AssetDisposal {
+  id                     String   @id @default(uuid()) @db.Uuid
+  assetId                String   @unique @db.Uuid
+  journalEntryId         String?  @db.Uuid
+  disposalDate           DateTime @db.Date
+  disposalMethod         String   @db.VarChar(50)
+  proceeds               Decimal  @default(0) @db.Decimal(19, 4)
+  costAtDisposal         Decimal  @db.Decimal(19, 4)
+  accumulatedAtDisposal  Decimal  @db.Decimal(19, 4)
+  netBookValueAtDisposal Decimal  @db.Decimal(19, 4)
+  gainOrLoss             Decimal  @db.Decimal(19, 4)
+  reason                 String   @db.Text
+  approvedById           String   @db.Uuid
+  approvedAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  asset        FixedAsset    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  approvedBy   User          @relation("AssetDisposalApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+}
+
+model IncentivePlan {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  companyId            String                 @db.Uuid
+  code                 String                 @db.VarChar(30)
+  name                 String                 @db.VarChar(160)
+  effectiveFrom        DateTime               @db.Date
+  effectiveTo          DateTime               @db.Date
+  recipientType        IncentiveRecipientType
+  branchId             String?                @db.Uuid
+  incentiveType        IncentiveType
+  rate                 Decimal?               @db.Decimal(19, 6)
+  fixedAmount          Decimal?               @db.Decimal(19, 4)
+  minimumTarget        Decimal                @default(0) @db.Decimal(19, 4)
+  maximumIncentive     Decimal?               @db.Decimal(19, 4)
+  eligibilityRules     Json?
+  returnAdjustmentRule String                 @default("REVERSE") @db.VarChar(40)
+  approvalRequired     Boolean                @default(true)
+  expenseAccountId     String                 @db.Uuid
+  payableAccountId     String                 @db.Uuid
+  incomeAccountId      String?                @db.Uuid
+  receivableAccountId  String?                @db.Uuid
+  isActive             Boolean                @default(true)
+  createdAt            DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime               @updatedAt @db.Timestamptz(3)
+
+  company            Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch             Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  expenseAccount     Account                @relation("IncentiveExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  payableAccount     Account                @relation("IncentivePayableAccount", fields: [payableAccountId], references: [id], onDelete: Restrict)
+  incomeAccount      Account?               @relation("IncentiveIncomeAccount", fields: [incomeAccountId], references: [id], onDelete: Restrict)
+  receivableAccount  Account?               @relation("IncentiveReceivableAccount", fields: [receivableAccountId], references: [id], onDelete: Restrict)
+  calculations       IncentiveCalculation[]
+  receivedIncentives ReceivedIncentive[]
+
+  @@unique([companyId, code])
+  @@index([companyId, effectiveFrom, effectiveTo, isActive])
+}
+
+model IncentiveCalculation {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  companyId           String                 @db.Uuid
+  planId              String                 @db.Uuid
+  branchId            String?                @db.Uuid
+  recipientType       IncentiveRecipientType
+  recipientUserId     String?                @db.Uuid
+  recipientCustomerId String?                @db.Uuid
+  recipientName       String?                @db.VarChar(160)
+  periodStart         DateTime               @db.Date
+  periodEnd           DateTime               @db.Date
+  eligibleQuantity    Decimal                @default(0) @db.Decimal(19, 4)
+  eligibleNetSales    Decimal                @default(0) @db.Decimal(19, 4)
+  calculatedAmount    Decimal                @db.Decimal(19, 4)
+  adjustmentAmount    Decimal                @default(0) @db.Decimal(19, 4)
+  approvedAmount      Decimal                @default(0) @db.Decimal(19, 4)
+  status              IncentiveStatus        @default(CALCULATED)
+  calculationDetails  Json?
+  calculatedById      String?                @db.Uuid
+  approvedById        String?                @db.Uuid
+  approvedAt          DateTime?              @db.Timestamptz(3)
+  accrualJournalId    String?                @db.Uuid
+  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  plan              IncentivePlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  branch            Branch?           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  recipientUser     User?             @relation("IncentiveRecipientUser", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recipientCustomer Customer?         @relation(fields: [recipientCustomerId], references: [id], onDelete: Restrict)
+  calculatedBy      User?             @relation("IncentiveCalculationCalculator", fields: [calculatedById], references: [id], onDelete: Restrict)
+  approvedBy        User?             @relation("IncentiveCalculationApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  accrualJournal    JournalEntry?     @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  payable           IncentivePayable?
+
+  @@unique([planId, recipientType, recipientUserId, recipientCustomerId, branchId, periodStart, periodEnd])
+  @@index([companyId, status, periodEnd])
+}
+
+model IncentivePayable {
+  id                String          @id @default(uuid()) @db.Uuid
+  companyId         String          @db.Uuid
+  calculationId     String          @unique @db.Uuid
+  voucherNumber     String          @db.VarChar(60)
+  accruedAmount     Decimal         @db.Decimal(19, 4)
+  paidAmount        Decimal         @default(0) @db.Decimal(19, 4)
+  outstandingAmount Decimal         @db.Decimal(19, 4)
+  status            IncentiveStatus @default(ACCRUED)
+  accrualJournalId  String          @db.Uuid
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
+
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  calculation    IncentiveCalculation @relation(fields: [calculationId], references: [id], onDelete: Restrict)
+  accrualJournal JournalEntry         @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  payments       IncentivePayment[]
+
+  @@unique([companyId, voucherNumber])
+  @@index([companyId, status])
+}
+
+model IncentivePayment {
+  id             String   @id @default(uuid()) @db.Uuid
+  payableId      String   @db.Uuid
+  bankAccountId  String?  @db.Uuid
+  journalEntryId String   @db.Uuid
+  paymentDate    DateTime @db.Date
+  paymentMethod  String   @db.VarChar(40)
+  reference      String?  @db.VarChar(120)
+  amount         Decimal  @db.Decimal(19, 4)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  payable      IncentivePayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount?     @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry     @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@index([payableId, paymentDate])
+}
+
+model ReceivedIncentive {
+  id                  String          @id @default(uuid()) @db.Uuid
+  companyId           String          @db.Uuid
+  planId              String?         @db.Uuid
+  supplierId          String?         @db.Uuid
+  referenceNumber     String          @db.VarChar(60)
+  payerName           String          @db.VarChar(160)
+  programName         String          @db.VarChar(160)
+  periodStart         DateTime        @db.Date
+  periodEnd           DateTime        @db.Date
+  targetQuantity      Decimal         @default(0) @db.Decimal(19, 4)
+  achievedQuantity    Decimal         @default(0) @db.Decimal(19, 4)
+  eligibleAmount      Decimal         @db.Decimal(19, 4)
+  approvedAmount      Decimal         @default(0) @db.Decimal(19, 4)
+  receivedAmount      Decimal         @default(0) @db.Decimal(19, 4)
+  outstandingAmount   Decimal         @default(0) @db.Decimal(19, 4)
+  expectedReceiptDate DateTime?       @db.Date
+  status              IncentiveStatus @default(DRAFT)
+  preparedById        String?         @db.Uuid
+  approvedById        String?         @db.Uuid
+  approvedAt          DateTime?       @db.Timestamptz(3)
+  incomeAccountId     String          @db.Uuid
+  receivableAccountId String          @db.Uuid
+  accrualJournalId    String?         @db.Uuid
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+
+  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  plan              IncentivePlan?             @relation(fields: [planId], references: [id], onDelete: Restrict)
+  supplier          Supplier?                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  incomeAccount     Account                    @relation("ReceivedIncentiveIncomeAccount", fields: [incomeAccountId], references: [id], onDelete: Restrict)
+  receivableAccount Account                    @relation("ReceivedIncentiveReceivableAccount", fields: [receivableAccountId], references: [id], onDelete: Restrict)
+  accrualJournal    JournalEntry?              @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  preparedBy        User?                      @relation("ReceivedIncentivePreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy        User?                      @relation("ReceivedIncentiveApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  payments          ReceivedIncentivePayment[]
+
+  @@unique([companyId, referenceNumber])
+  @@index([companyId, status, expectedReceiptDate])
+}
+
+model ReceivedIncentivePayment {
+  id                  String   @id @default(uuid()) @db.Uuid
+  receivedIncentiveId String   @db.Uuid
+  bankAccountId       String?  @db.Uuid
+  journalEntryId      String   @db.Uuid
+  receiptDate         DateTime @db.Date
+  receiptMethod       String   @db.VarChar(40)
+  reference           String?  @db.VarChar(120)
+  amount              Decimal  @db.Decimal(19, 4)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  receivedIncentive ReceivedIncentive @relation(fields: [receivedIncentiveId], references: [id], onDelete: Restrict)
+  bankAccount       BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  journalEntry      JournalEntry      @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@index([receivedIncentiveId, receiptDate])
+}
+
+model RebateProgram {
+  id                  String          @id @default(uuid()) @db.Uuid
+  companyId           String          @db.Uuid
+  code                String          @db.VarChar(30)
+  name                String          @db.VarChar(160)
+  direction           RebateDirection
+  supplierId          String?         @db.Uuid
+  customerId          String?         @db.Uuid
+  effectiveFrom       DateTime        @db.Date
+  effectiveTo         DateTime        @db.Date
+  calculationMethod   String          @db.VarChar(60)
+  rate                Decimal?        @db.Decimal(19, 6)
+  fixedAmount         Decimal?        @db.Decimal(19, 4)
+  rules               Json?
+  primaryAccountId    String          @db.Uuid
+  settlementAccountId String          @db.Uuid
+  accountingTreatment String          @db.VarChar(80)
+  isActive            Boolean         @default(true)
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime        @updatedAt @db.Timestamptz(3)
+
+  company           Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  supplier          Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  customer          Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  primaryAccount    Account             @relation("RebatePrimaryAccount", fields: [primaryAccountId], references: [id], onDelete: Restrict)
+  settlementAccount Account             @relation("RebateSettlementAccount", fields: [settlementAccountId], references: [id], onDelete: Restrict)
+  calculations      RebateCalculation[]
+
+  @@unique([companyId, code])
+  @@index([companyId, direction, isActive])
+}
+
+model RebateCalculation {
+  id                 String       @id @default(uuid()) @db.Uuid
+  companyId          String       @db.Uuid
+  programId          String       @db.Uuid
+  supplierId         String?      @db.Uuid
+  customerId         String?      @db.Uuid
+  referenceNumber    String       @db.VarChar(60)
+  periodStart        DateTime     @db.Date
+  periodEnd          DateTime     @db.Date
+  eligibleQuantity   Decimal      @default(0) @db.Decimal(19, 4)
+  eligibleValue      Decimal      @default(0) @db.Decimal(19, 4)
+  calculatedAmount   Decimal      @db.Decimal(19, 4)
+  approvedAmount     Decimal      @default(0) @db.Decimal(19, 4)
+  settledAmount      Decimal      @default(0) @db.Decimal(19, 4)
+  outstandingAmount  Decimal      @default(0) @db.Decimal(19, 4)
+  dueDate            DateTime?    @db.Date
+  status             RebateStatus @default(CALCULATED)
+  calculationDetails Json?
+  accrualJournalId   String?      @db.Uuid
+  calculatedById     String?      @db.Uuid
+  approvedById       String?      @db.Uuid
+  approvedAt         DateTime?    @db.Timestamptz(3)
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  program        RebateProgram     @relation(fields: [programId], references: [id], onDelete: Restrict)
+  supplier       Supplier?         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  accrualJournal JournalEntry?     @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  calculatedBy   User?             @relation("RebateCalculationCalculator", fields: [calculatedById], references: [id], onDelete: Restrict)
+  approvedBy     User?             @relation("RebateCalculationApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  receivable     RebateReceivable?
+  payable        RebatePayable?
+
+  @@unique([companyId, referenceNumber])
+  @@index([companyId, status, dueDate])
+}
+
+model RebateReceivable {
+  id                String  @id @default(uuid()) @db.Uuid
+  calculationId     String  @unique @db.Uuid
+  accrualJournalId  String  @db.Uuid
+  accruedAmount     Decimal @db.Decimal(19, 4)
+  receivedAmount    Decimal @default(0) @db.Decimal(19, 4)
+  outstandingAmount Decimal @db.Decimal(19, 4)
+
+  calculation    RebateCalculation @relation(fields: [calculationId], references: [id], onDelete: Restrict)
+  accrualJournal JournalEntry      @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  receipts       RebateReceipt[]
+}
+
+model RebateReceipt {
+  id             String   @id @default(uuid()) @db.Uuid
+  receivableId   String   @db.Uuid
+  bankAccountId  String?  @db.Uuid
+  journalEntryId String   @db.Uuid
+  receiptDate    DateTime @db.Date
+  receiptMethod  String   @db.VarChar(40)
+  reference      String?  @db.VarChar(120)
+  amount         Decimal  @db.Decimal(19, 4)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  receivable   RebateReceivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount?     @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry     @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@index([receivableId, receiptDate])
+}
+
+model RebatePayable {
+  id                String  @id @default(uuid()) @db.Uuid
+  calculationId     String  @unique @db.Uuid
+  accrualJournalId  String  @db.Uuid
+  accruedAmount     Decimal @db.Decimal(19, 4)
+  paidAmount        Decimal @default(0) @db.Decimal(19, 4)
+  outstandingAmount Decimal @db.Decimal(19, 4)
+
+  calculation    RebateCalculation @relation(fields: [calculationId], references: [id], onDelete: Restrict)
+  accrualJournal JournalEntry      @relation(fields: [accrualJournalId], references: [id], onDelete: Restrict)
+  payments       RebatePayment[]
+}
+
+model RebatePayment {
+  id             String   @id @default(uuid()) @db.Uuid
+  payableId      String   @db.Uuid
+  bankAccountId  String?  @db.Uuid
+  journalEntryId String   @db.Uuid
+  paymentDate    DateTime @db.Date
+  paymentMethod  String   @db.VarChar(40)
+  reference      String?  @db.VarChar(120)
+  amount         Decimal  @db.Decimal(19, 4)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  payable      RebatePayable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount?  @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@index([payableId, paymentDate])
+}
+
+model Budget {
+  id           String       @id @default(uuid()) @db.Uuid
+  companyId    String       @db.Uuid
+  fiscalYearId String       @db.Uuid
+  branchId     String?      @db.Uuid
+  departmentId String?      @db.Uuid
+  costCenterId String?      @db.Uuid
+  code         String       @db.VarChar(40)
+  name         String       @db.VarChar(160)
+  version      Int          @default(1)
+  status       BudgetStatus @default(DRAFT)
+  createdById  String?      @db.Uuid
+  submittedAt  DateTime?    @db.Timestamptz(3)
+  approvedById String?      @db.Uuid
+  approvedAt   DateTime?    @db.Timestamptz(3)
+  closedAt     DateTime?    @db.Timestamptz(3)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  fiscalYear FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  branch     Branch?      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  createdBy  User?        @relation("BudgetCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?        @relation("BudgetApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  lines      BudgetLine[]
+
+  @@unique([companyId, code, version])
+  @@index([companyId, fiscalYearId, status])
+}
+
+model BudgetLine {
+  id        String  @id @default(uuid()) @db.Uuid
+  budgetId  String  @db.Uuid
+  accountId String  @db.Uuid
+  periodId  String  @db.Uuid
+  amount    Decimal @db.Decimal(19, 4)
+  notes     String? @db.VarChar(500)
+
+  budget  Budget           @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  account Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  period  AccountingPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  @@unique([budgetId, accountId, periodId])
+  @@index([periodId, accountId])
+}
+
+model OpeningBalanceBatch {
+  id               String               @id @default(uuid()) @db.Uuid
+  companyId        String               @db.Uuid
+  fiscalYearId     String               @db.Uuid
+  journalEntryId   String?              @db.Uuid
+  batchNumber      String               @db.VarChar(60)
+  balanceDate      DateTime             @db.Date
+  description      String               @db.Text
+  status           OpeningBalanceStatus @default(DRAFT)
+  totalDebit       Decimal              @default(0) @db.Decimal(19, 4)
+  totalCredit      Decimal              @default(0) @db.Decimal(19, 4)
+  validationErrors Json?
+  createdById      String               @db.Uuid
+  approvedById     String?              @db.Uuid
+  postedAt         DateTime?            @db.Timestamptz(3)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  fiscalYear   FiscalYear           @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry?        @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("OpeningBalanceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?                @relation("OpeningBalanceApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  lines        OpeningBalanceLine[]
+
+  @@unique([companyId, batchNumber])
+  @@index([companyId, balanceDate, status])
+}
+
+model OpeningBalanceLine {
+  id            String    @id @default(uuid()) @db.Uuid
+  batchId       String    @db.Uuid
+  accountId     String    @db.Uuid
+  customerId    String?   @db.Uuid
+  supplierId    String?   @db.Uuid
+  bankAccountId String?   @db.Uuid
+  fixedAssetId  String?   @db.Uuid
+  reference     String?   @db.VarChar(120)
+  dueDate       DateTime? @db.Date
+  debit         Decimal   @default(0) @db.Decimal(19, 4)
+  credit        Decimal   @default(0) @db.Decimal(19, 4)
+  details       Json?
+  lineNumber    Int       @db.SmallInt
+
+  batch       OpeningBalanceBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  account     Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  customer    Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier    Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  fixedAsset  FixedAsset?         @relation(fields: [fixedAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, lineNumber])
+  @@index([accountId])
+}
+
+model FinancialPeriodClose {
+  id               String       @id @default(uuid()) @db.Uuid
+  companyId        String       @db.Uuid
+  periodId         String       @db.Uuid
+  closingJournalId String?      @db.Uuid
+  status           PeriodStatus @default(OPEN)
+  checklist        Json
+  unresolvedItems  Json?
+  requestedById    String       @db.Uuid
+  approvedById     String?      @db.Uuid
+  closedAt         DateTime?    @db.Timestamptz(3)
+  reopenedAt       DateTime?    @db.Timestamptz(3)
+  reopenReason     String?      @db.Text
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
+
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  period         AccountingPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  closingJournal JournalEntry?    @relation(fields: [closingJournalId], references: [id], onDelete: Restrict)
+  requestedBy    User             @relation("PeriodCloseRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy     User?            @relation("PeriodCloseApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@unique([periodId])
+  @@index([companyId, status])
+}
+
+enum OperationalDocumentStatus {
+  DRAFT
+  SUBMITTED
+  INSPECTION
+  APPROVED
+  PARTIALLY_RECEIVED
+  FULLY_RECEIVED
+  POSTED
+  CLOSED
+  REJECTED
+  CANCELLED
+  REVERSED
+}
+
+enum PurchaseReceiptType {
+  PO_BASED
+  DIRECT
+}
+
+enum StockReturnType {
+  SALES_RETURN
+  PURCHASE_RETURN
+}
+
+enum StockReturnDisposition {
+  RESTOCK
+  QUARANTINE
+  RETURN_TO_VENDOR
+  SCRAP
+}
+
+enum QualityInspectionResult {
+  PENDING
+  ACCEPTED
+  REJECTED
+  QUARANTINED
+}
+
+enum StockUnitStatus {
+  IN_STOCK
+  RESERVED
+  IN_TRANSIT
+  SOLD
+  RETURNED
+  QUARANTINED
+  SCRAPPED
+}
+
+enum IdentifierType {
+  IMEI
+  SERIAL
+  MAC
+  OTHER
+}
+
+enum InventoryMovementType {
+  OPENING
+  PURCHASE_RECEIPT
+  PURCHASE_RETURN
+  SALE_ISSUE
+  SALES_RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  STOCKTAKE_GAIN
+  STOCKTAKE_LOSS
+  RESERVATION
+  RELEASE
+}
+
+enum PaymentDirection {
+  CUSTOMER_RECEIPT
+  SUPPLIER_PAYMENT
+  CUSTOMER_REFUND
+  SUPPLIER_REFUND
+}
+
+model PhysicalStockUnit {
+  id                 String          @id @default(uuid()) @db.Uuid
+  companyId          String          @db.Uuid
+  productId          String          @db.Uuid
+  variantId          String          @db.Uuid
+  currentBranchId    String?         @db.Uuid
+  currentWarehouseId String?         @db.Uuid
+  currentLocationId  String?         @db.Uuid
+  status             StockUnitStatus @default(IN_STOCK)
+  acquisitionDate    DateTime        @db.Date
+  acquisitionCost    Decimal         @db.Decimal(19, 4)
+  soldAt             DateTime?       @db.Timestamptz(3)
+  version            Int             @default(0)
+  attributes         Json?
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+
+  company              Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product              Product                @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant              ProductVariant         @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  currentBranch        Branch?                @relation(fields: [currentBranchId], references: [id], onDelete: Restrict)
+  currentWarehouse     Warehouse?             @relation(fields: [currentWarehouseId], references: [id], onDelete: Restrict)
+  currentLocation      WarehouseLocation?     @relation(fields: [currentLocationId], references: [id], onDelete: Restrict)
+  identifiers          DeviceIdentifier[]
+  movements            InventoryMovement[]
+  receiptUnits         PurchaseReceiptUnit[]
+  salesUnits           SalesInvoiceUnit[]
+  returnUnits          StockReturnUnit[]
+  transferUnits        StockTransferUnit[]
+  adjustmentUnits      StockAdjustmentUnit[]
+  countUnits           StockCountUnit[]
+  reservations         InventoryReservation[]
+  productionOrderUnits ProductionOrderUnit[]
+
+  @@index([companyId, status, currentWarehouseId])
+  @@index([companyId, productId, variantId])
+}
+
+model DeviceIdentifier {
+  id              String         @id @default(uuid()) @db.Uuid
+  companyId       String         @db.Uuid
+  stockUnitId     String         @db.Uuid
+  type            IdentifierType
+  value           String         @db.VarChar(120)
+  normalizedValue String         @db.VarChar(120)
+  slot            Int?           @db.SmallInt
+  isPrimary       Boolean        @default(false)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  stockUnit PhysicalStockUnit @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, type, normalizedValue])
+  @@unique([stockUnitId, type, slot])
+  @@index([stockUnitId])
+}
+
+model InventoryLot {
+  id              String    @id @default(uuid()) @db.Uuid
+  companyId       String    @db.Uuid
+  productId       String    @db.Uuid
+  variantId       String    @db.Uuid
+  lotNumber       String    @db.VarChar(80)
+  manufactureDate DateTime? @db.Date
+  expiryDate      DateTime? @db.Date
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product         Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant         ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  movements       InventoryMovement[]
+  balances        StockBalance[]
+  receiptLines    PurchaseReceiptLine[]
+  transferLines   StockTransferLine[]
+  adjustmentLines StockAdjustmentLine[]
+  countLines      StockCountLine[]
+
+  @@unique([companyId, variantId, lotNumber])
+  @@index([companyId, expiryDate])
+}
+
+model StockBalance {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @db.Uuid
+  branchId       String   @db.Uuid
+  warehouseId    String   @db.Uuid
+  productId      String   @db.Uuid
+  variantId      String   @db.Uuid
+  lotId          String?  @db.Uuid
+  balanceKey     String   @db.VarChar(180)
+  quantity       Decimal  @default(0) @db.Decimal(19, 4)
+  inventoryValue Decimal  @default(0) @db.Decimal(19, 4)
+  version        Int      @default(0)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot       InventoryLot?  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, balanceKey])
+  @@index([companyId, warehouseId, productId, variantId])
+}
+
+model InventoryMovement {
+  id                   String                @id @default(uuid()) @db.Uuid
+  companyId            String                @db.Uuid
+  branchId             String                @db.Uuid
+  warehouseId          String                @db.Uuid
+  locationId           String?               @db.Uuid
+  productId            String                @db.Uuid
+  variantId            String                @db.Uuid
+  stockUnitId          String?               @db.Uuid
+  lotId                String?               @db.Uuid
+  journalEntryId       String?               @db.Uuid
+  reversalOfId         String?               @db.Uuid
+  movementGroupId      String                @db.Uuid
+  idempotencyKey       String                @db.VarChar(180)
+  movementType         InventoryMovementType
+  postingDate          DateTime              @db.Date
+  quantity             Decimal               @db.Decimal(19, 4)
+  unitCost             Decimal               @db.Decimal(19, 4)
+  totalCost            Decimal               @db.Decimal(19, 4)
+  sourceDocumentType   String                @db.VarChar(80)
+  sourceDocumentId     String                @db.Uuid
+  sourceDocumentNumber String                @db.VarChar(80)
+  lineReference        String?               @db.VarChar(80)
+  notes                String?               @db.Text
+  createdById          String                @db.Uuid
+  postedAt             DateTime              @default(now()) @db.Timestamptz(3)
+
+  company      Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  location     WarehouseLocation?  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  product      Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant      ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  stockUnit    PhysicalStockUnit?  @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+  lot          InventoryLot?       @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  reversalOf   InventoryMovement?  @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals    InventoryMovement[] @relation("InventoryMovementReversal")
+  createdBy    User                @relation("InventoryMovementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, sourceDocumentType, sourceDocumentId, movementType])
+  @@index([companyId, postingDate, movementType])
+  @@index([companyId, warehouseId, productId, variantId, postingDate])
+  @@index([stockUnitId, postingDate])
+  @@index([movementGroupId])
+}
+
+model InventoryReservation {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @db.Uuid
+  branchId    String    @db.Uuid
+  warehouseId String    @db.Uuid
+  productId   String    @db.Uuid
+  variantId   String    @db.Uuid
+  stockUnitId String?   @db.Uuid
+  quantity    Decimal   @db.Decimal(19, 4)
+  sourceType  String    @db.VarChar(80)
+  sourceId    String    @db.Uuid
+  expiresAt   DateTime? @db.Timestamptz(3)
+  releasedAt  DateTime? @db.Timestamptz(3)
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch    Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse Warehouse          @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  product   Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant   ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  stockUnit PhysicalStockUnit? @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+  createdBy User               @relation("InventoryReservationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, warehouseId, variantId, releasedAt, expiresAt])
+  @@index([sourceType, sourceId])
+}
+
+model StockTransfer {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  companyId              String                    @db.Uuid
+  sourceBranchId         String                    @db.Uuid
+  sourceWarehouseId      String                    @db.Uuid
+  destinationBranchId    String                    @db.Uuid
+  destinationWarehouseId String                    @db.Uuid
+  reversalOfId           String?                   @unique @db.Uuid
+  transferNumber         String                    @db.VarChar(60)
+  transferDate           DateTime                  @db.Date
+  status                 OperationalDocumentStatus @default(DRAFT)
+  reference              String?                   @db.VarChar(100)
+  reason                 String                    @db.VarChar(200)
+  remarks                String?                   @db.Text
+  preparedById           String                    @db.Uuid
+  approvedById           String?                   @db.Uuid
+  postedById             String?                   @db.Uuid
+  reversedById           String?                   @db.Uuid
+  submittedAt            DateTime?                 @db.Timestamptz(3)
+  approvedAt             DateTime?                 @db.Timestamptz(3)
+  postedAt               DateTime?                 @db.Timestamptz(3)
+  reversedAt             DateTime?                 @db.Timestamptz(3)
+  cancelledAt            DateTime?                 @db.Timestamptz(3)
+  idempotencyKey         String                    @db.VarChar(120)
+  createdAt              DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company              Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  sourceBranch         Branch              @relation("StockTransferSourceBranch", fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  sourceWarehouse      Warehouse           @relation("StockTransferSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationBranch    Branch              @relation("StockTransferDestinationBranch", fields: [destinationBranchId], references: [id], onDelete: Restrict)
+  destinationWarehouse Warehouse           @relation("StockTransferDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  preparedBy           User                @relation("StockTransferPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy           User?               @relation("StockTransferApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy             User?               @relation("StockTransferPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy           User?               @relation("StockTransferReverser", fields: [reversedById], references: [id], onDelete: Restrict)
+  reversalOf           StockTransfer?      @relation("StockTransferReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal             StockTransfer?      @relation("StockTransferReversal")
+  lines                StockTransferLine[]
+
+  @@unique([companyId, transferNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, transferDate])
+  @@index([companyId, sourceWarehouseId, transferDate])
+  @@index([companyId, destinationWarehouseId, transferDate])
+}
+
+model StockTransferLine {
+  id             String         @id @default(uuid()) @db.Uuid
+  transferId     String         @db.Uuid
+  productId      String         @db.Uuid
+  variantId      String         @db.Uuid
+  lotId          String?        @db.Uuid
+  lineNumber     Int            @db.SmallInt
+  description    String         @db.VarChar(240)
+  trackingMethod TrackingMethod
+  quantity       Decimal        @db.Decimal(19, 4)
+  unitCost       Decimal        @default(0) @db.Decimal(19, 4)
+  totalCost      Decimal        @default(0) @db.Decimal(19, 4)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  transfer StockTransfer       @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  product  Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot      InventoryLot?       @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  units    StockTransferUnit[]
+
+  @@unique([transferId, lineNumber])
+  @@index([productId, variantId])
+  @@index([lotId])
+}
+
+model StockTransferUnit {
+  id             String   @id @default(uuid()) @db.Uuid
+  transferLineId String   @db.Uuid
+  stockUnitId    String   @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  transferLine StockTransferLine @relation(fields: [transferLineId], references: [id], onDelete: Restrict)
+  stockUnit    PhysicalStockUnit @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([transferLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model StockAdjustment {
+  id               String                    @id @default(uuid()) @db.Uuid
+  companyId        String                    @db.Uuid
+  branchId         String                    @db.Uuid
+  warehouseId      String                    @db.Uuid
+  stockCountId     String?                   @unique @db.Uuid
+  reversalOfId     String?                   @unique @db.Uuid
+  journalEntryId   String?                   @unique @db.Uuid
+  adjustmentNumber String                    @db.VarChar(60)
+  adjustmentDate   DateTime                  @db.Date
+  status           OperationalDocumentStatus @default(DRAFT)
+  reasonCode       String                    @db.VarChar(40)
+  reason           String                    @db.VarChar(500)
+  notes            String?                   @db.Text
+  increaseValue    Decimal                   @default(0) @db.Decimal(19, 4)
+  decreaseValue    Decimal                   @default(0) @db.Decimal(19, 4)
+  netValue         Decimal                   @default(0) @db.Decimal(19, 4)
+  preparedById     String                    @db.Uuid
+  approvedById     String?                   @db.Uuid
+  postedById       String?                   @db.Uuid
+  reversedById     String?                   @db.Uuid
+  submittedAt      DateTime?                 @db.Timestamptz(3)
+  approvedAt       DateTime?                 @db.Timestamptz(3)
+  postedAt         DateTime?                 @db.Timestamptz(3)
+  reversedAt       DateTime?                 @db.Timestamptz(3)
+  cancelledAt      DateTime?                 @db.Timestamptz(3)
+  idempotencyKey   String                    @db.VarChar(120)
+  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company      Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  stockCount   StockCount?           @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  reversalOf   StockAdjustment?      @relation("StockAdjustmentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal     StockAdjustment?      @relation("StockAdjustmentReversal")
+  journalEntry JournalEntry?         @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  preparedBy   User                  @relation("StockAdjustmentPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy   User?                 @relation("StockAdjustmentApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy     User?                 @relation("StockAdjustmentPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy   User?                 @relation("StockAdjustmentReverser", fields: [reversedById], references: [id], onDelete: Restrict)
+  lines        StockAdjustmentLine[]
+
+  @@unique([companyId, adjustmentNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, adjustmentDate])
+  @@index([companyId, warehouseId, adjustmentDate])
+}
+
+model StockAdjustmentLine {
+  id             String         @id @default(uuid()) @db.Uuid
+  adjustmentId   String         @db.Uuid
+  productId      String         @db.Uuid
+  variantId      String         @db.Uuid
+  lotId          String?        @db.Uuid
+  lineNumber     Int            @db.SmallInt
+  description    String         @db.VarChar(240)
+  trackingMethod TrackingMethod
+  quantityDelta  Decimal        @db.Decimal(19, 4)
+  unitCost       Decimal        @default(0) @db.Decimal(19, 4)
+  totalCost      Decimal        @default(0) @db.Decimal(19, 4)
+  notes          String?        @db.VarChar(500)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  adjustment StockAdjustment       @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+  product    Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant    ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot        InventoryLot?         @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  units      StockAdjustmentUnit[]
+
+  @@unique([adjustmentId, lineNumber])
+  @@index([productId, variantId])
+  @@index([lotId])
+}
+
+model StockAdjustmentUnit {
+  id               String   @id @default(uuid()) @db.Uuid
+  adjustmentLineId String   @db.Uuid
+  stockUnitId      String?  @db.Uuid
+  isNewUnit        Boolean  @default(false)
+  acquisitionCost  Decimal  @default(0) @db.Decimal(19, 4)
+  attributes       Json?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  adjustmentLine StockAdjustmentLine             @relation(fields: [adjustmentLineId], references: [id], onDelete: Restrict)
+  stockUnit      PhysicalStockUnit?              @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+  identifiers    StockAdjustmentUnitIdentifier[]
+
+  @@unique([adjustmentLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model StockAdjustmentUnitIdentifier {
+  id               String         @id @default(uuid()) @db.Uuid
+  adjustmentUnitId String         @db.Uuid
+  type             IdentifierType
+  value            String         @db.VarChar(120)
+  normalizedValue  String         @db.VarChar(120)
+  slot             Int?           @db.SmallInt
+  isPrimary        Boolean        @default(false)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+
+  adjustmentUnit StockAdjustmentUnit @relation(fields: [adjustmentUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([adjustmentUnitId, type, slot])
+  @@index([type, normalizedValue])
+}
+
+model StockCount {
+  id             String                    @id @default(uuid()) @db.Uuid
+  companyId      String                    @db.Uuid
+  branchId       String                    @db.Uuid
+  warehouseId    String                    @db.Uuid
+  countNumber    String                    @db.VarChar(60)
+  countDate      DateTime                  @db.Date
+  snapshotAt     DateTime                  @db.Timestamptz(3)
+  scopeMode      String                    @default("FULL") @db.VarChar(20)
+  status         OperationalDocumentStatus @default(DRAFT)
+  reason         String                    @db.VarChar(500)
+  notes          String?                   @db.Text
+  preparedById   String                    @db.Uuid
+  submittedById  String?                   @db.Uuid
+  postedById     String?                   @db.Uuid
+  submittedAt    DateTime?                 @db.Timestamptz(3)
+  postedAt       DateTime?                 @db.Timestamptz(3)
+  cancelledAt    DateTime?                 @db.Timestamptz(3)
+  idempotencyKey String                    @db.VarChar(120)
+  createdAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  preparedBy  User             @relation("StockCountPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  submittedBy User?            @relation("StockCountSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  postedBy    User?            @relation("StockCountPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  lines       StockCountLine[]
+  adjustment  StockAdjustment?
+
+  @@unique([companyId, countNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, countDate])
+  @@index([companyId, warehouseId, countDate])
+}
+
+model StockCountLine {
+  id               String         @id @default(uuid()) @db.Uuid
+  stockCountId     String         @db.Uuid
+  productId        String         @db.Uuid
+  variantId        String         @db.Uuid
+  lotId            String?        @db.Uuid
+  lineNumber       Int            @db.SmallInt
+  description      String         @db.VarChar(240)
+  trackingMethod   TrackingMethod
+  expectedQuantity Decimal        @db.Decimal(19, 4)
+  expectedValue    Decimal        @default(0) @db.Decimal(19, 4)
+  countedQuantity  Decimal        @default(0) @db.Decimal(19, 4)
+  varianceQuantity Decimal        @default(0) @db.Decimal(19, 4)
+  unitCost         Decimal        @default(0) @db.Decimal(19, 4)
+  totalVariance    Decimal        @default(0) @db.Decimal(19, 4)
+  notes            String?        @db.VarChar(500)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+
+  stockCount StockCount       @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  product    Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant    ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot        InventoryLot?    @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  units      StockCountUnit[]
+
+  @@unique([stockCountId, lineNumber])
+  @@index([productId, variantId])
+  @@index([lotId])
+}
+
+model StockCountUnit {
+  id               String    @id @default(uuid()) @db.Uuid
+  stockCountLineId String    @db.Uuid
+  stockUnitId      String    @db.Uuid
+  wasExpected      Boolean   @default(true)
+  counted          Boolean   @default(false)
+  countedAt        DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  stockCountLine StockCountLine    @relation(fields: [stockCountLineId], references: [id], onDelete: Restrict)
+  stockUnit      PhysicalStockUnit @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([stockCountLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model PurchaseOrder {
+  id                String                    @id @default(uuid()) @db.Uuid
+  companyId         String                    @db.Uuid
+  branchId          String                    @db.Uuid
+  supplierId        String                    @db.Uuid
+  warehouseId       String                    @db.Uuid
+  orderNumber       String                    @db.VarChar(60)
+  orderDate         DateTime                  @db.Date
+  expectedDate      DateTime?                 @db.Date
+  supplierReference String?                   @db.VarChar(100)
+  paymentTermsDays  Int                       @default(0)
+  status            OperationalDocumentStatus @default(DRAFT)
+  currencyCode      String                    @db.Char(3)
+  exchangeRate      Decimal                   @default(1) @db.Decimal(19, 8)
+  subtotal          Decimal                   @default(0) @db.Decimal(19, 4)
+  discountTotal     Decimal                   @default(0) @db.Decimal(19, 4)
+  documentDiscount  Decimal                   @default(0) @db.Decimal(19, 4)
+  taxTotal          Decimal                   @default(0) @db.Decimal(19, 4)
+  freightTotal      Decimal                   @default(0) @db.Decimal(19, 4)
+  otherCharges      Decimal                   @default(0) @db.Decimal(19, 4)
+  grandTotal        Decimal                   @default(0) @db.Decimal(19, 4)
+  idempotencyKey    String                    @db.VarChar(120)
+  notes             String?                   @db.Text
+  preparedById      String                    @db.Uuid
+  approvedById      String?                   @db.Uuid
+  approvedAt        DateTime?                 @db.Timestamptz(3)
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company    Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  supplier   Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse  Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  preparedBy User                @relation("PurchaseOrderPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy User?               @relation("PurchaseOrderApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  lines      PurchaseOrderLine[]
+  receipts   PurchaseReceipt[]
+
+  @@unique([companyId, orderNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, supplierId, status, orderDate])
+}
+
+model PurchaseOrderLine {
+  id               String  @id @default(uuid()) @db.Uuid
+  orderId          String  @db.Uuid
+  productId        String  @db.Uuid
+  variantId        String  @db.Uuid
+  taxRuleId        String? @db.Uuid
+  lineNumber       Int     @db.SmallInt
+  description      String  @db.VarChar(500)
+  orderedQuantity  Decimal @db.Decimal(19, 4)
+  receivedQuantity Decimal @default(0) @db.Decimal(19, 4)
+  unitCost         Decimal @db.Decimal(19, 4)
+  discountAmount   Decimal @default(0) @db.Decimal(19, 4)
+  taxRate          Decimal @default(0) @db.Decimal(9, 4)
+  taxAmount        Decimal @default(0) @db.Decimal(19, 4)
+  lineTotal        Decimal @db.Decimal(19, 4)
+
+  order        PurchaseOrder         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product      Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant      ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  taxRule      TaxRule?              @relation(fields: [taxRuleId], references: [id], onDelete: Restrict)
+  receiptLines PurchaseReceiptLine[]
+
+  @@unique([orderId, lineNumber])
+  @@index([variantId])
+  @@index([taxRuleId])
+}
+
+model PurchaseReceipt {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  companyId             String                    @db.Uuid
+  branchId              String                    @db.Uuid
+  warehouseId           String                    @db.Uuid
+  supplierId            String                    @db.Uuid
+  purchaseOrderId       String?                   @db.Uuid
+  journalEntryId        String?                   @unique @db.Uuid
+  reversalOfId          String?                   @unique @db.Uuid
+  receiptNumber         String                    @db.VarChar(60)
+  receiptType           PurchaseReceiptType       @default(PO_BASED)
+  supplierInvoiceNumber String?                   @db.VarChar(80)
+  supplierDeliveryNote  String?                   @db.VarChar(100)
+  directReceiptReason   String?                   @db.VarChar(300)
+  allowOverReceipt      Boolean                   @default(false)
+  overReceiptReason     String?                   @db.VarChar(300)
+  requiresInspection    Boolean                   @default(false)
+  receiptDate           DateTime                  @db.Date
+  invoiceDate           DateTime?                 @db.Date
+  dueDate               DateTime?                 @db.Date
+  status                OperationalDocumentStatus @default(DRAFT)
+  currencyCode          String                    @db.Char(3)
+  subtotal              Decimal                   @default(0) @db.Decimal(19, 4)
+  discountTotal         Decimal                   @default(0) @db.Decimal(19, 4)
+  documentDiscount      Decimal                   @default(0) @db.Decimal(19, 4)
+  taxTotal              Decimal                   @default(0) @db.Decimal(19, 4)
+  freightTotal          Decimal                   @default(0) @db.Decimal(19, 4)
+  otherCharges          Decimal                   @default(0) @db.Decimal(19, 4)
+  grandTotal            Decimal                   @default(0) @db.Decimal(19, 4)
+  idempotencyKey        String                    @db.VarChar(120)
+  notes                 String?                   @db.Text
+  preparedById          String                    @db.Uuid
+  receivedById          String                    @db.Uuid
+  approvedById          String?                   @db.Uuid
+  postedById            String?                   @db.Uuid
+  reversedById          String?                   @db.Uuid
+  approvedAt            DateTime?                 @db.Timestamptz(3)
+  postedAt              DateTime?                 @db.Timestamptz(3)
+  reversedAt            DateTime?                 @db.Timestamptz(3)
+  reversalReason        String?                   @db.Text
+  createdAt             DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch        Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  supplier      Supplier              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder?        @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  journalEntry  JournalEntry?         @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  reversalOf    PurchaseReceipt?      @relation("PurchaseReceiptReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals     PurchaseReceipt[]     @relation("PurchaseReceiptReversal")
+  preparedBy    User                  @relation("PurchaseReceiptPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  receivedBy    User                  @relation("PurchaseReceiptReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+  approvedBy    User?                 @relation("PurchaseReceiptApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy      User?                 @relation("PurchaseReceiptPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy    User?                 @relation("PurchaseReceiptReverser", fields: [reversedById], references: [id], onDelete: Restrict)
+  lines         PurchaseReceiptLine[]
+  inspections   QualityInspection[]
+  stockReturns  StockReturn[]
+  allocations   PaymentAllocation[]
+
+  @@unique([companyId, receiptNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, supplierId, status, receiptDate])
+  @@index([purchaseOrderId, status])
+}
+
+model PurchaseReceiptLine {
+  id                        String                  @id @default(uuid()) @db.Uuid
+  receiptId                 String                  @db.Uuid
+  orderLineId               String?                 @db.Uuid
+  productId                 String                  @db.Uuid
+  variantId                 String                  @db.Uuid
+  taxRuleId                 String?                 @db.Uuid
+  lotId                     String?                 @db.Uuid
+  lineNumber                Int                     @db.SmallInt
+  description               String                  @db.VarChar(500)
+  quantity                  Decimal                 @db.Decimal(19, 4)
+  acceptedQuantity          Decimal                 @default(0) @db.Decimal(19, 4)
+  rejectedQuantity          Decimal                 @default(0) @db.Decimal(19, 4)
+  unitCost                  Decimal                 @db.Decimal(19, 4)
+  discountAmount            Decimal                 @default(0) @db.Decimal(19, 4)
+  taxRate                   Decimal                 @default(0) @db.Decimal(9, 4)
+  taxAmount                 Decimal                 @default(0) @db.Decimal(19, 4)
+  allocatedDocumentDiscount Decimal                 @default(0) @db.Decimal(19, 4)
+  allocatedFreight          Decimal                 @default(0) @db.Decimal(19, 4)
+  allocatedOtherCharges     Decimal                 @default(0) @db.Decimal(19, 4)
+  landedUnitCost            Decimal                 @default(0) @db.Decimal(19, 4)
+  lineTotal                 Decimal                 @db.Decimal(19, 4)
+  inspectionStatus          QualityInspectionResult @default(PENDING)
+  inspectionNotes           String?                 @db.VarChar(500)
+
+  receipt     PurchaseReceipt       @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  orderLine   PurchaseOrderLine?    @relation(fields: [orderLineId], references: [id], onDelete: Restrict)
+  product     Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  taxRule     TaxRule?              @relation(fields: [taxRuleId], references: [id], onDelete: Restrict)
+  lot         InventoryLot?         @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  units       PurchaseReceiptUnit[]
+  inspections QualityInspection[]
+  returnLines StockReturnLine[]
+
+  @@unique([receiptId, lineNumber])
+  @@index([variantId])
+  @@index([taxRuleId])
+  @@index([orderLineId])
+}
+
+model PurchaseReceiptUnit {
+  id               String                  @id @default(uuid()) @db.Uuid
+  receiptLineId    String                  @db.Uuid
+  stockUnitId      String?                 @db.Uuid
+  identifiers      Json
+  attributes       Json?
+  condition        String?                 @db.VarChar(80)
+  inspectionStatus QualityInspectionResult @default(PENDING)
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+
+  receiptLine PurchaseReceiptLine @relation(fields: [receiptLineId], references: [id], onDelete: Restrict)
+  stockUnit   PhysicalStockUnit?  @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+  inspections QualityInspection[]
+
+  @@unique([receiptLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model QualityInspection {
+  id            String                  @id @default(uuid()) @db.Uuid
+  companyId     String                  @db.Uuid
+  receiptId     String                  @db.Uuid
+  receiptLineId String                  @db.Uuid
+  receiptUnitId String?                 @db.Uuid
+  inspectedById String                  @db.Uuid
+  result        QualityInspectionResult
+  condition     String?                 @db.VarChar(80)
+  notes         String?                 @db.VarChar(500)
+  inspectedAt   DateTime                @default(now()) @db.Timestamptz(3)
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  receipt     PurchaseReceipt      @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  receiptLine PurchaseReceiptLine  @relation(fields: [receiptLineId], references: [id], onDelete: Restrict)
+  receiptUnit PurchaseReceiptUnit? @relation(fields: [receiptUnitId], references: [id], onDelete: Restrict)
+  inspectedBy User                 @relation("QualityInspectionInspector", fields: [inspectedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, receiptId])
+  @@index([receiptLineId, receiptUnitId])
+}
+
+model SalesInvoice {
+  id             String                    @id @default(uuid()) @db.Uuid
+  companyId      String                    @db.Uuid
+  branchId       String                    @db.Uuid
+  warehouseId    String                    @db.Uuid
+  customerId     String                    @db.Uuid
+  salespersonId  String?                   @db.Uuid
+  priceListId    String?                   @db.Uuid
+  journalEntryId String?                   @unique @db.Uuid
+  reversalOfId   String?                   @unique @db.Uuid
+  invoiceNumber  String                    @db.VarChar(60)
+  invoiceDate    DateTime                  @db.Date
+  dueDate        DateTime?                 @db.Date
+  status         OperationalDocumentStatus @default(DRAFT)
+  currencyCode   String                    @db.Char(3)
+  subtotal       Decimal                   @default(0) @db.Decimal(19, 4)
+  discountTotal  Decimal                   @default(0) @db.Decimal(19, 4)
+  taxTotal       Decimal                   @default(0) @db.Decimal(19, 4)
+  grandTotal     Decimal                   @default(0) @db.Decimal(19, 4)
+  costTotal      Decimal                   @default(0) @db.Decimal(19, 4)
+  idempotencyKey String                    @db.VarChar(120)
+  notes          String?                   @db.Text
+  preparedById   String                    @db.Uuid
+  approvedById   String?                   @db.Uuid
+  postedById     String?                   @db.Uuid
+  reversedById   String?                   @db.Uuid
+  approvedAt     DateTime?                 @db.Timestamptz(3)
+  postedAt       DateTime?                 @db.Timestamptz(3)
+  reversedAt     DateTime?                 @db.Timestamptz(3)
+  reversalReason String?                   @db.Text
+  createdAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company      Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  customer     Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesperson  User?               @relation("SalesInvoiceSalesperson", fields: [salespersonId], references: [id], onDelete: Restrict)
+  priceList    PriceList?          @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  reversalOf   SalesInvoice?       @relation("SalesInvoiceReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals    SalesInvoice[]      @relation("SalesInvoiceReversal")
+  preparedBy   User                @relation("SalesInvoicePreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy   User?               @relation("SalesInvoiceApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy     User?               @relation("SalesInvoicePoster", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy   User?               @relation("SalesInvoiceReverser", fields: [reversedById], references: [id], onDelete: Restrict)
+  lines        SalesInvoiceLine[]
+  stockReturns StockReturn[]
+  allocations  PaymentAllocation[]
+
+  @@unique([companyId, invoiceNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, customerId, status, invoiceDate])
+}
+
+model SalesInvoiceLine {
+  id             String  @id @default(uuid()) @db.Uuid
+  invoiceId      String  @db.Uuid
+  productId      String  @db.Uuid
+  variantId      String  @db.Uuid
+  taxRuleId      String? @db.Uuid
+  lineNumber     Int     @db.SmallInt
+  description    String  @db.VarChar(500)
+  quantity       Decimal @db.Decimal(19, 4)
+  unitPrice      Decimal @db.Decimal(19, 4)
+  discountAmount Decimal @default(0) @db.Decimal(19, 4)
+  taxRate        Decimal @default(0) @db.Decimal(9, 4)
+  taxAmount      Decimal @default(0) @db.Decimal(19, 4)
+  lineTotal      Decimal @db.Decimal(19, 4)
+  costTotal      Decimal @default(0) @db.Decimal(19, 4)
+
+  invoice     SalesInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  product     Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant     ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  taxRule     TaxRule?           @relation(fields: [taxRuleId], references: [id], onDelete: Restrict)
+  units       SalesInvoiceUnit[]
+  returnLines StockReturnLine[]
+
+  @@unique([invoiceId, lineNumber])
+  @@index([variantId])
+  @@index([taxRuleId])
+}
+
+model SalesInvoiceUnit {
+  id            String @id @default(uuid()) @db.Uuid
+  invoiceLineId String @db.Uuid
+  stockUnitId   String @db.Uuid
+
+  invoiceLine SalesInvoiceLine  @relation(fields: [invoiceLineId], references: [id], onDelete: Restrict)
+  stockUnit   PhysicalStockUnit @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([invoiceLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model StockReturn {
+  id                String                    @id @default(uuid()) @db.Uuid
+  companyId         String                    @db.Uuid
+  branchId          String                    @db.Uuid
+  warehouseId       String                    @db.Uuid
+  customerId        String?                   @db.Uuid
+  supplierId        String?                   @db.Uuid
+  salesInvoiceId    String?                   @db.Uuid
+  purchaseReceiptId String?                   @db.Uuid
+  journalEntryId    String?                   @unique @db.Uuid
+  returnNumber      String                    @db.VarChar(60)
+  returnType        StockReturnType
+  returnDate        DateTime                  @db.Date
+  status            OperationalDocumentStatus @default(DRAFT)
+  currencyCode      String                    @db.Char(3)
+  subtotal          Decimal                   @default(0) @db.Decimal(19, 4)
+  discountTotal     Decimal                   @default(0) @db.Decimal(19, 4)
+  taxTotal          Decimal                   @default(0) @db.Decimal(19, 4)
+  grandTotal        Decimal                   @default(0) @db.Decimal(19, 4)
+  costTotal         Decimal                   @default(0) @db.Decimal(19, 4)
+  reason            String                    @db.VarChar(500)
+  notes             String?                   @db.Text
+  idempotencyKey    String                    @db.VarChar(120)
+  preparedById      String                    @db.Uuid
+  approvedById      String?                   @db.Uuid
+  postedById        String?                   @db.Uuid
+  approvedAt        DateTime?                 @db.Timestamptz(3)
+  postedAt          DateTime?                 @db.Timestamptz(3)
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  customer        Customer?         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier        Supplier?         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  salesInvoice    SalesInvoice?     @relation(fields: [salesInvoiceId], references: [id], onDelete: Restrict)
+  purchaseReceipt PurchaseReceipt?  @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
+  journalEntry    JournalEntry?     @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  preparedBy      User              @relation("StockReturnPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy      User?             @relation("StockReturnApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy        User?             @relation("StockReturnPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  lines           StockReturnLine[]
+
+  @@unique([companyId, returnNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, returnType, status, returnDate])
+  @@index([salesInvoiceId])
+  @@index([purchaseReceiptId])
+}
+
+model StockReturnLine {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  returnId            String                 @db.Uuid
+  sourceSalesLineId   String?                @db.Uuid
+  sourceReceiptLineId String?                @db.Uuid
+  productId           String                 @db.Uuid
+  variantId           String                 @db.Uuid
+  lineNumber          Int                    @db.SmallInt
+  description         String                 @db.VarChar(500)
+  quantity            Decimal                @db.Decimal(19, 4)
+  unitAmount          Decimal                @db.Decimal(19, 4)
+  discountAmount      Decimal                @default(0) @db.Decimal(19, 4)
+  taxRate             Decimal                @default(0) @db.Decimal(9, 4)
+  taxAmount           Decimal                @default(0) @db.Decimal(19, 4)
+  lineTotal           Decimal                @db.Decimal(19, 4)
+  costTotal           Decimal                @default(0) @db.Decimal(19, 4)
+  disposition         StockReturnDisposition
+  condition           String?                @db.VarChar(80)
+  notes               String?                @db.VarChar(500)
+
+  stockReturn       StockReturn          @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  sourceSalesLine   SalesInvoiceLine?    @relation(fields: [sourceSalesLineId], references: [id], onDelete: Restrict)
+  sourceReceiptLine PurchaseReceiptLine? @relation(fields: [sourceReceiptLineId], references: [id], onDelete: Restrict)
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant           ProductVariant       @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  units             StockReturnUnit[]
+
+  @@unique([returnId, lineNumber])
+  @@unique([returnId, sourceSalesLineId])
+  @@unique([returnId, sourceReceiptLineId])
+  @@index([productId, variantId])
+  @@index([sourceSalesLineId])
+  @@index([sourceReceiptLineId])
+}
+
+model StockReturnUnit {
+  id           String @id @default(uuid()) @db.Uuid
+  returnLineId String @db.Uuid
+  stockUnitId  String @db.Uuid
+
+  returnLine StockReturnLine   @relation(fields: [returnLineId], references: [id], onDelete: Restrict)
+  stockUnit  PhysicalStockUnit @relation(fields: [stockUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([returnLineId, stockUnitId])
+  @@index([stockUnitId])
+}
+
+model Payment {
+  id              String                    @id @default(uuid()) @db.Uuid
+  companyId       String                    @db.Uuid
+  branchId        String                    @db.Uuid
+  customerId      String?                   @db.Uuid
+  supplierId      String?                   @db.Uuid
+  bankAccountId   String?                   @db.Uuid
+  cashAccountId   String?                   @db.Uuid
+  paymentMethodId String?                   @db.Uuid
+  journalEntryId  String?                   @unique @db.Uuid
+  reversalOfId    String?                   @unique @db.Uuid
+  paymentNumber   String                    @db.VarChar(60)
+  paymentDate     DateTime                  @db.Date
+  direction       PaymentDirection
+  status          OperationalDocumentStatus @default(DRAFT)
+  currencyCode    String                    @db.Char(3)
+  amount          Decimal                   @db.Decimal(19, 4)
+  reference       String?                   @db.VarChar(120)
+  notes           String?                   @db.Text
+  idempotencyKey  String                    @db.VarChar(120)
+  preparedById    String                    @db.Uuid
+  approvedById    String?                   @db.Uuid
+  postedById      String?                   @db.Uuid
+  reversedById    String?                   @db.Uuid
+  approvedAt      DateTime?                 @db.Timestamptz(3)
+  postedAt        DateTime?                 @db.Timestamptz(3)
+  reversedAt      DateTime?                 @db.Timestamptz(3)
+  reversalReason  String?                   @db.Text
+  createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @db.Timestamptz(3)
+
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch        Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer      Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  bankAccount   BankAccount?        @relation("PaymentBankAccount", fields: [bankAccountId], references: [id], onDelete: Restrict)
+  cashAccount   Account?            @relation("PaymentAccount", fields: [cashAccountId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod?      @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  journalEntry  JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  reversalOf    Payment?            @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals     Payment[]           @relation("PaymentReversal")
+  preparedBy    User                @relation("PaymentPreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy    User?               @relation("PaymentApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy      User?               @relation("PaymentPoster", fields: [postedById], references: [id], onDelete: Restrict)
+  reversedBy    User?               @relation("PaymentReverser", fields: [reversedById], references: [id], onDelete: Restrict)
+  allocations   PaymentAllocation[]
+
+  @@unique([companyId, paymentNumber])
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, direction, status, paymentDate])
+  @@index([customerId, paymentDate])
+  @@index([supplierId, paymentDate])
+  @@index([paymentMethodId])
+}
+
+model PaymentAllocation {
+  id                String  @id @default(uuid()) @db.Uuid
+  paymentId         String  @db.Uuid
+  salesInvoiceId    String? @db.Uuid
+  purchaseReceiptId String? @db.Uuid
+  amount            Decimal @db.Decimal(19, 4)
+
+  payment         Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  salesInvoice    SalesInvoice?    @relation(fields: [salesInvoiceId], references: [id], onDelete: Restrict)
+  purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([salesInvoiceId])
+  @@index([purchaseReceiptId])
+}
+
+model PriceList {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @db.Uuid
+  code          String    @db.VarChar(30)
+  name          String    @db.VarChar(120)
+  priceLevel    String    @default("RETAIL") @db.VarChar(40)
+  currencyCode  String    @db.Char(3)
+  isDefault     Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime? @db.Date
+  effectiveTo   DateTime? @db.Date
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  items         PriceListItem[]
+  customers     Customer[]
+  salesInvoices SalesInvoice[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, isActive, isDefault])
+}
+
+model PriceListItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  priceListId  String   @db.Uuid
+  variantId    String   @db.Uuid
+  price        Decimal  @db.Decimal(19, 4)
+  minimumPrice Decimal? @db.Decimal(19, 4)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  priceList PriceList      @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([priceListId, variantId])
+  @@index([variantId])
+}
+
+model PaymentMethod {
+  id                String   @id @default(uuid()) @db.Uuid
+  companyId         String   @db.Uuid
+  code              String   @db.VarChar(30)
+  name              String   @db.VarChar(80)
+  methodType        String   @db.VarChar(30)
+  cashAccountId     String?  @db.Uuid
+  bankAccountId     String?  @db.Uuid
+  requiresReference Boolean  @default(false)
+  sequence          Int      @default(0) @db.SmallInt
+  isActive          Boolean  @default(true)
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  cashAccount Account?     @relation("PaymentMethodCashAccount", fields: [cashAccountId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount? @relation("PaymentMethodBankAccount", fields: [bankAccountId], references: [id], onDelete: Restrict)
+  payments    Payment[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, isActive, sequence])
+}
+
+enum PolicyDocumentType {
+  PURCHASE_ORDER
+  PURCHASE_RECEIPT
+  SALES_INVOICE
+  PAYMENT
+  JOURNAL
+  INVENTORY_ADJUSTMENT
+}
+
+/// Supplier-specific commercial terms for a product/variant: the supplier's own item code, their
+/// latest quoted cost, lead time and minimum order quantity. Used by purchasing screens and the
+/// reorder suggestion report; never used to move stock or post accounting by itself.
+model SupplierItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @db.Uuid
+  supplierId   String   @db.Uuid
+  productId    String   @db.Uuid
+  variantId    String?  @db.Uuid
+  supplierSku  String   @db.VarChar(80)
+  description  String?  @db.VarChar(180)
+  lastCost     Decimal  @default(0) @db.Decimal(19, 4)
+  leadTimeDays Int      @default(0) @db.SmallInt
+  minOrderQty  Decimal  @default(0) @db.Decimal(19, 4)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  supplier Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, supplierId, supplierSku])
+  @@index([companyId, productId])
+  @@index([supplierId, isActive])
+  @@index([variantId])
+}
+
+/// Amount-banded approval policy. When a document's total falls inside a band, the actor must also
+/// hold the listed permission to move it forward. Bands are additive to the existing role grants and
+/// never replace maker/checker/poster separation.
+model ApprovalPolicy {
+  id                 String             @id @default(uuid()) @db.Uuid
+  companyId          String             @db.Uuid
+  documentType       PolicyDocumentType
+  name               String             @db.VarChar(120)
+  minAmount          Decimal            @default(0) @db.Decimal(19, 4)
+  maxAmount          Decimal?           @db.Decimal(19, 4)
+  requiredPermission String             @db.VarChar(80)
+  isActive           Boolean            @default(true)
+  notes              String?            @db.Text
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, documentType, name])
+  @@index([companyId, documentType, isActive])
+}
+
+/// Per-user saved filter for a list/report screen. The query is stored as JSON and replayed by the
+/// client; server-side validation still applies when the filters are used.
+model SavedView {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  userId    String   @db.Uuid
+  module    String   @db.VarChar(60)
+  name      String   @db.VarChar(80)
+  query     Json
+  isShared  Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module, name])
+  @@index([companyId, module])
+}
+
+/// Definition of a recurring report export. The application stores and validates the definition and
+/// can execute it on demand; a production host runs scripts/run-report-schedules.ts from cron or Task
+/// Scheduler (there is no in-process scheduler to lose on restart).
+model ReportSchedule {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @db.Uuid
+  createdById   String    @db.Uuid
+  name          String    @db.VarChar(120)
+  reportKey     String    @db.VarChar(60)
+  filters       Json
+  cadence       String    @db.VarChar(20)
+  recipients    String    @db.VarChar(400)
+  isActive      Boolean   @default(true)
+  lastRunAt     DateTime? @db.Timestamptz(3)
+  lastRunStatus String?   @db.VarChar(20)
+  lastRunRows   Int?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive, cadence])
+}
+
+model Bom {
+  id              String   @id @default(uuid()) @db.Uuid
+  companyId       String   @db.Uuid
+  code            String   @db.VarChar(40)
+  name            String   @db.VarChar(160)
+  productId       String   @db.Uuid
+  variantId       String   @db.Uuid
+  outputQuantity  Decimal  @default(1) @db.Decimal(19, 4)
+  scrapPercentage Decimal  @default(0) @db.Decimal(5, 2)
+  description     String?  @db.Text
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant          ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  items            BomItem[]
+  productionOrders ProductionOrder[]
+
+  @@unique([companyId, code])
+  @@index([companyId, productId, variantId])
+}
+
+model BomItem {
+  id                 String  @id @default(uuid()) @db.Uuid
+  bomId              String  @db.Uuid
+  componentProductId String  @db.Uuid
+  componentVariantId String  @db.Uuid
+  quantity           Decimal @db.Decimal(19, 4)
+  scrapTolerance     Decimal @default(0) @db.Decimal(5, 2)
+  notes              String? @db.VarChar(255)
+
+  bom              Bom            @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  componentProduct Product        @relation(fields: [componentProductId], references: [id], onDelete: Restrict)
+  componentVariant ProductVariant @relation(fields: [componentVariantId], references: [id], onDelete: Restrict)
+
+  @@index([bomId])
+}
+
+model ProductionOrder {
+  id                String    @id @default(uuid()) @db.Uuid
+  companyId         String    @db.Uuid
+  branchId          String    @db.Uuid
+  bomId             String    @db.Uuid
+  orderNumber       String    @db.VarChar(40)
+  sourceWarehouseId String    @db.Uuid
+  targetWarehouseId String    @db.Uuid
+  productId         String    @db.Uuid
+  variantId         String    @db.Uuid
+  plannedQuantity   Decimal   @db.Decimal(19, 4)
+  completedQuantity Decimal   @default(0) @db.Decimal(19, 4)
+  scrappedQuantity  Decimal   @default(0) @db.Decimal(19, 4)
+  unitCost          Decimal   @default(0) @db.Decimal(19, 4)
+  totalCost         Decimal   @default(0) @db.Decimal(19, 4)
+  status            String    @default("DRAFT") @db.VarChar(30)
+  plannedStartDate  DateTime  @db.Date
+  plannedEndDate    DateTime  @db.Date
+  actualStartDate   DateTime? @db.Timestamptz(3)
+  actualEndDate     DateTime? @db.Timestamptz(3)
+  notes             String?   @db.Text
+  createdById       String    @db.Uuid
+  approvedById      String?   @db.Uuid
+  postedById        String?   @db.Uuid
+  journalEntryId    String?   @db.Uuid
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  company         Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch          Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  bom             Bom                       @relation(fields: [bomId], references: [id], onDelete: Restrict)
+  sourceWarehouse Warehouse                 @relation("ProductionOrderSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  targetWarehouse Warehouse                 @relation("ProductionOrderTargetWarehouse", fields: [targetWarehouseId], references: [id], onDelete: Restrict)
+  product         Product                   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant         ProductVariant            @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  materialsIssued ProductionMaterialIssue[]
+  unitsProduced   ProductionOrderUnit[]
+
+  @@unique([companyId, orderNumber])
+  @@index([companyId, branchId, status])
+}
+
+model ProductionMaterialIssue {
+  id                String   @id @default(uuid()) @db.Uuid
+  productionOrderId String   @db.Uuid
+  productId         String   @db.Uuid
+  variantId         String   @db.Uuid
+  warehouseId       String   @db.Uuid
+  quantity          Decimal  @db.Decimal(19, 4)
+  unitCost          Decimal  @db.Decimal(19, 4)
+  totalCost         Decimal  @db.Decimal(19, 4)
+  movementId        String?  @db.Uuid
+  issuedAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant         ProductVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([productionOrderId])
+}
+
+model ProductionOrderUnit {
+  id                  String   @id @default(uuid()) @db.Uuid
+  productionOrderId   String   @db.Uuid
+  physicalStockUnitId String   @db.Uuid
+  imei1               String   @db.VarChar(20)
+  imei2               String?  @db.VarChar(20)
+  serialNumber        String?  @db.VarChar(60)
+  qcResult            String   @default("PASS") @db.VarChar(20)
+  qcNotes             String?  @db.VarChar(255)
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+
+  productionOrder   ProductionOrder   @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  physicalStockUnit PhysicalStockUnit @relation(fields: [physicalStockUnitId], references: [id], onDelete: Restrict)
+
+  @@index([productionOrderId])
+}

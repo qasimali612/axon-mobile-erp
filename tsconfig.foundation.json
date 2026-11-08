@@ -1,0 +1,30 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "src/lib/finance/**",
+    "src/lib/operations/**",
+    "src/app/api/finance/**",
+    "src/app/api/purchases/**",
+    "src/app/api/sales/**",
+    "src/app/api/payments/**",
+    "src/app/api/inventory/**",
+    "src/app/api/operations/**",
+    "src/app/api/customers/**",
+    "src/app/api/suppliers/**",
+    "src/app/(erp)/finance/**",
+    "src/app/(erp)/inventory/**",
+    "src/app/(erp)/purchases/**",
+    "src/app/(erp)/goods-receipts/**",
+    "src/app/(erp)/pos/**",
+    "src/app/(erp)/sales/**",
+    "src/app/(erp)/parties/**",
+    "src/components/finance/**",
+    "src/components/inventory/**",
+    "src/components/purchase/**",
+    "src/components/sales/**",
+    "src/components/parties/**"
+  ]
+}

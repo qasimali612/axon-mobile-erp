@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 245 247 246;
+  --foreground: 23 33 29;
+  --muted: 104 119 112;
+  --border: 224 229 226;
+  --brand: 37 99 235;
+}
+
+* { border-color: rgb(var(--border)); }
+html { scroll-behavior: smooth; }
+body {
+  min-height: 100vh;
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+}
+::selection { background: #b1dfcb; color: #123a30; }
+
+@layer base {
+  h1, h2, h3 { @apply font-display tracking-[-0.02em]; }
+  button, a, input, select, textarea { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 focus-visible:ring-offset-2; }
+  input[type="search"]::-webkit-search-cancel-button { display: none; }
+}
+
+@layer components {
+  .surface { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
+  .surface-muted { @apply rounded-xl border border-slate-200 bg-slate-50/70; }
+  .label { @apply mb-1.5 block text-[12px] font-semibold text-slate-600; }
+  .input {
+    @apply h-10 w-full rounded-lg border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-forest-500 focus:ring-forest-500;
+  }
+  .select {
+    @apply h-10 w-full rounded-lg border-slate-200 bg-white py-0 pl-3 pr-9 text-sm text-slate-900 focus:border-forest-500 focus:ring-forest-500;
+  }
+  .textarea {
+    @apply min-h-24 w-full resize-y rounded-lg border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-forest-500 focus:ring-forest-500;
+  }
+  .table-head { @apply bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500; }
+  .table-cell { @apply border-t border-slate-100 px-4 py-3.5 text-sm align-middle; }
+  .kicker { @apply text-[11px] font-bold uppercase tracking-[0.16em] text-forest-700; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up .25s ease-out both; }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  .no-print { display: none !important; }
+  .erp-content-shell { padding-left: 0 !important; }
+  .erp-main { min-height: 0 !important; padding: 0 !important; }
+  .print-document { width: 100% !important; max-width: none !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; }
+  .print-break-avoid { break-inside: avoid; }
+  body { background: #fff; }
+  .surface { box-shadow: none; border-color: #d1d5db; }
+}
