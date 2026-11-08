@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import { jsonSafe } from "@/lib/serializers";
 
 export type BackupSummary = {
   filename: string;
@@ -269,7 +270,8 @@ export async function createDatabaseBackup(companyId: string, userId?: string) {
     },
   };
 
-  const jsonString = JSON.stringify(payload, null, 2);
+  const safePayload = jsonSafe(payload);
+  const jsonString = JSON.stringify(safePayload, null, 2);
   await fs.writeFile(filePath, jsonString, "utf8");
   const stat = await fs.stat(filePath);
 
@@ -305,7 +307,7 @@ export async function createDatabaseBackup(companyId: string, userId?: string) {
     timestamp: payload.timestamp,
     counts,
     totalRecords,
-    payload,
+    payload: safePayload,
   };
 }
 
@@ -592,10 +594,14 @@ export async function restoreDatabaseBackup(inputPayload: any, actorId?: string)
   // Restore Document Sequences
   if (data.documentSequences?.length) {
     for (const seq of data.documentSequences) {
+      const nextValue = BigInt(seq.nextValue || 1);
       await prisma.documentSequence.upsert({
         where: { id: seq.id },
-        create: seq,
-        update: { nextValue: seq.nextValue },
+        create: {
+          ...seq,
+          nextValue,
+        },
+        update: { nextValue },
       });
     }
   }
