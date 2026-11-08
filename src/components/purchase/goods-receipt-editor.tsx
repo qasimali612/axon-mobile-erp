@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Barcode, Boxes, ChevronRight, FileSpreadsheet, Loader2, PackageCheck, Paperclip, Printer, Save, Search, Send, ShieldCheck, Smartphone, Trash2, X } from "lucide-react";
+import { ArrowLeft, Barcode, Boxes, ChevronRight, FileSpreadsheet, Loader2, PackageCheck, Paperclip, Printer, Save, Search, Send, ShieldCheck, Smartphone, Trash2, X, Zap } from "lucide-react";
 import { DeviceIdentifierEditor } from "@/components/purchase/device-identifier-editor";
 import { isValidImei } from "@/lib/imei";
 
@@ -225,6 +225,31 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
     catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "Unable to submit receipt." }); } finally { setSaving(false); }
   }
 
+  async function saveAndDirectPost() {
+    const id = await saveDraft(); if (!id) return;
+    setSaving(true);
+    try {
+      const subRes = await fetch(`/api/purchases/receipts/${id}/submit`, { method: "POST" });
+      const subBody = await subRes.json();
+      if (!subRes.ok) throw new Error(subBody.error?.message || "Submit failed.");
+      
+      const appRes = await fetch(`/api/purchases/receipts/${id}/approve`, { method: "POST" });
+      const appBody = await appRes.json();
+      if (!appRes.ok) throw new Error(appBody.error?.message || "Approval failed.");
+
+      const postRes = await fetch(`/api/purchases/receipts/${id}/post`, { method: "POST" });
+      const postBody = await postRes.json();
+      if (!postRes.ok) throw new Error(postBody.error?.message || "Posting failed.");
+
+      hydrateReceipt(postBody.data);
+      setNotice({ kind: "success", text: `✓ ${postBody.data.receiptNumber} directly posted! Inventory and GL journals are active.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof Error ? error.message : "Direct posting failed." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function importSpreadsheet(file: File) {
     setSaving(true); setNotice(null);
     try {
@@ -302,9 +327,7 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
           <label className="sm:col-span-2"><span className="label">Notes</span><input className={inputClass} value={header.notes} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, notes: event.target.value }))}/></label>
         </div></section>
 
-        <section className="rounded-xl border border-blue-200 bg-blue-50/70 p-4">
-          <div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-blue-700 shadow-sm"><Smartphone className="h-4 w-4"/></span><div className="min-w-0"><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-black text-blue-950">How to purchase and record IMEI stock</h2><div className="flex gap-3 text-xs font-bold"><Link href="/catalog/products?tracking=IMEI" className="text-blue-700 hover:underline">IMEI product master</Link><Link href="/inventory/imei" className="text-blue-700 hover:underline">IMEI registry</Link></div></div><ol className="mt-2 grid gap-2 text-xs leading-5 text-blue-900 sm:grid-cols-2 xl:grid-cols-4"><li><b>1. Product:</b> set Tracking Type to IMEI in Product Catalog.</li><li><b>2. Receipt:</b> use an approved PO or choose Direct receipt—PO is optional.</li><li><b>3. Devices:</b> enter quantity, then click Record IMEIs. One row equals one phone; both IMEIs stay on that row.</li><li><b>4. Post:</b> save, submit, approve, and post. Only posting creates available stock and accounting.</li></ol></div></div>
-        </section>
+
 
         <section className="surface min-w-0 overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-bold">Received products <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{rows.length}</span></h2><p className="mt-0.5 text-xs text-slate-500">Received quantity never changes stock until approved posting.</p></div>{editable && <div className="flex rounded-lg bg-slate-100 p-1">{(["search", "scan", "import"] as const).map((mode) => <button key={mode} onClick={() => setEntryMode(mode)} className={`rounded-md px-3 py-1.5 text-xs font-bold capitalize ${entryMode === mode ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}>{mode}</button>)}</div>}</div>
           {editable && <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
@@ -324,7 +347,7 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
       </aside>
     </div>
 
-    {editable && <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,.08)] backdrop-blur"><div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-blue-600"/>Draft, scan, and submit never alter stock.</div><div className="flex gap-2"><button disabled={saving} onClick={() => void saveDraft()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-bold">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4"/>}Save draft</button><button disabled={saving} onClick={() => void saveAndSubmit()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-bold text-white"><Send className="h-4 w-4"/>Save & submit</button></div></div></div>}
+    {editable && <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,.08)] backdrop-blur"><div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 text-blue-600"/>Draft, scan, and submit never alter stock.</div><div className="flex gap-2"><button disabled={saving} onClick={() => void saveDraft()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-bold">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4"/>}Save draft</button><button disabled={saving} onClick={() => void saveAndSubmit()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-blue-600 bg-blue-50 px-4 text-sm font-bold text-blue-700 hover:bg-blue-100"><Send className="h-4 w-4"/>Submit</button>{permissions.includes("PURCHASE_RECEIPT_POST") && <button disabled={saving} onClick={() => void saveAndDirectPost()} className="inline-flex h-10 items-center gap-2 rounded-lg bg-emerald-600 px-5 text-sm font-bold text-white hover:bg-emerald-700 shadow-sm"><Zap className="h-4 w-4"/>Direct Post Now</button>}</div></div></div>}
 
     {serialEditor && activeRow && activeProduct && <DeviceIdentifierEditor trackingMethod={activeProduct.trackingMethod as "IMEI" | "SERIAL"} productName={activeRow.description} quantity={Math.max(0, Math.floor(number(activeRow.quantity)))} value={activeRow.unitText} onChange={(value) => updateRow(activeRow.key, { unitText: value })} onClose={() => setSerialEditor(null)} readOnly={!editable}/>}
 

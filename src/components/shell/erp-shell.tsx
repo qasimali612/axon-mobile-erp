@@ -43,6 +43,7 @@ import {
   Layers,
   FileCheck2,
   Receipt,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Logo } from "@/components/logo";
@@ -180,6 +181,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
       { label: "Approvals queue", href: "/approvals", icon: FileCheck2 },
       { label: "Users", href: "/access/users", icon: Users, permission: "access.user.view" },
       { label: "Roles & access", href: "/access/roles", icon: ShieldCheck, permission: "access.role.view" },
+      { label: "Database backup & restore", href: "/settings/backup", icon: Database, permission: "backup.manage" },
       { label: "Audit trail", href: "/audit", icon: FileClock, permission: "audit.view" },
     ],
   },
