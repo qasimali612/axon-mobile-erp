@@ -1,0 +1,50 @@
+name: Axon ERP CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, Test & Build Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/axon_ci?sslmode=disable
+      APP_SECRET: 015d85540dd31ecd95b16e60077ab023a5b4bc5578ea8d6f67cc91d9fd56a1a2
+      DEMO_SEED: "false"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run TypeScript Strict Typecheck
+        run: npm run typecheck
+
+      - name: Run Automated Vitest Suite (56 Tests)
+        run: npm test
+
+      - name: Verify Next.js Production Build
+        run: npm run build
+        env:
+          NODE_ENV: production

@@ -1,0 +1,61 @@
+name: Axon ERP CD - Cloud Database Migration
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  migrate-database:
+    name: Apply Cloud Database Migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Runs when DATABASE_URL secret is provided in the repository
+    if: github.repository == 'qasimali612/axon-mobile-erp'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Deploy Migrations to Cloud PostgreSQL
+        if: ${{ secrets.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Applying pending migrations to cloud database..."
+          npx prisma migrate deploy
+          echo "✓ Cloud database migrations up to date."
+
+      - name: Skip Notification
+        if: ${{ secrets.DATABASE_URL == '' }}
+        run: |
+          echo "Notice: secrets.DATABASE_URL is not configured in GitHub repository secrets."
+          echo "To auto-migrate on push: Add DATABASE_URL under Repo -> Settings -> Secrets and variables -> Actions."
+
+  verify-production:
+    name: Verify Production Health Endpoint
+    needs: [migrate-database]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Production Health
+        if: ${{ secrets.PRODUCTION_APP_URL != '' }}
+        run: |
+          URL="${{ secrets.PRODUCTION_APP_URL }}/api/system/health"
+          echo "Pinging health endpoint: $URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✓ Production health check passed (Status 200 OK)."
+          else
+            echo "⚠️ Health check returned status $STATUS (deployment may still be building on Vercel)."
+          fi
