@@ -5,9 +5,13 @@ import {
   Boxes,
   CheckCircle2,
   Fingerprint,
+  Headphones,
   Landmark,
+  Lock,
+  Phone,
   ScanLine,
   ShieldCheck,
+  Sparkles,
   Warehouse,
 } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
@@ -15,9 +19,9 @@ import { Logo } from "@/components/logo";
 import { getAuthContext } from "@/lib/auth";
 
 const controls = [
-  { icon: Fingerprint, title: "Device identity", detail: "IMEI and serial custody" },
-  { icon: Warehouse, title: "Stock control", detail: "Branch and warehouse scope" },
-  { icon: Landmark, title: "Financial integrity", detail: "Balanced, traceable posting" },
+  { icon: Fingerprint, title: "Dual IMEI Tracking", detail: "Strict hardware-level custody" },
+  { icon: Warehouse, title: "Multi-Warehouse Scopes", detail: "Branch & storekeeper isolation" },
+  { icon: Landmark, title: "General Ledger Integrity", detail: "Self-balancing double-entry journals" },
 ];
 
 export default async function LoginPage() {
@@ -25,108 +29,163 @@ export default async function LoginPage() {
   if (context) redirect(context.user.forcePasswordChange ? "/change-password" : "/");
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f4f7fb] p-0 lg:p-5">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(59,130,246,.11),transparent_30%),radial-gradient(circle_at_88%_88%,rgba(37,99,235,.08),transparent_28%)]" />
+    <main className="relative min-h-screen overflow-hidden bg-[#0c192e] p-0 lg:p-6 flex items-center justify-center">
+      {/* Dynamic Background Mesh Gradients */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-[#071326] to-[#040b17]" />
+      <div className="pointer-events-none absolute -left-48 -top-48 h-96 w-96 rounded-full bg-blue-500/10 blur-[120px]" />
+      <div className="pointer-events-none absolute -bottom-48 -right-48 h-96 w-96 rounded-full bg-indigo-500/10 blur-[120px]" />
 
-      <div className="relative mx-auto grid min-h-screen max-w-[1500px] overflow-hidden bg-white shadow-[0_30px_100px_rgba(15,23,42,.14)] lg:min-h-[calc(100vh-40px)] lg:grid-cols-[1.12fr_.88fr] lg:rounded-[30px] lg:border lg:border-white/80">
-        <section className="relative hidden min-h-[720px] overflow-hidden bg-[#07152f] text-white lg:flex lg:flex-col">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(59,130,246,.38),transparent_31%),radial-gradient(circle_at_82%_78%,rgba(29,78,216,.25),transparent_34%),linear-gradient(145deg,#07152f_0%,#0a2252_52%,#071735_100%)]" />
+      <div className="relative mx-auto grid w-full max-w-[1480px] overflow-hidden bg-white shadow-[0_35px_120px_rgba(0,0,0,.45)] lg:min-h-[820px] lg:grid-cols-[1.15fr_.85fr] lg:rounded-[32px] lg:border lg:border-white/10">
+        
+        {/* LEFT COLUMN: Premium Enterprise Showcase (Desktop) */}
+        <section className="relative hidden min-h-[760px] overflow-hidden bg-[#07152f] text-white lg:flex lg:flex-col justify-between">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(59,130,246,.35),transparent_35%),radial-gradient(circle_at_80%_80%,rgba(37,99,235,.2),transparent_35%),linear-gradient(150deg,#07152f_0%,#091e48_55%,#051226_100%)]" />
+          
+          {/* Subtle Architectural Grid */}
           <div
-            className="absolute inset-0 opacity-[.16]"
+            className="absolute inset-0 opacity-[.14]"
             style={{
-              backgroundImage: "linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px)",
-              backgroundSize: "52px 52px",
-              maskImage: "linear-gradient(to bottom, black, transparent 82%)",
+              backgroundImage: "linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)",
+              backgroundSize: "48px 48px",
+              maskImage: "linear-gradient(to bottom, black, transparent 88%)",
             }}
           />
-          <div className="absolute -right-28 top-24 h-72 w-72 rounded-full border border-blue-300/15" />
-          <div className="absolute -right-8 top-44 h-44 w-44 rounded-full border border-blue-300/15" />
-          <div className="absolute bottom-[-150px] left-[-100px] h-[430px] w-[430px] rounded-full bg-blue-600/20 blur-3xl" />
 
-          <header className="relative z-10 flex items-center justify-between px-12 pt-11 xl:px-16">
+          {/* Decorative Circles */}
+          <div className="absolute -right-24 top-20 h-72 w-72 rounded-full border border-blue-400/15" />
+          <div className="absolute -right-6 top-40 h-44 w-44 rounded-full border border-blue-400/15" />
+          <div className="absolute bottom-[-140px] left-[-80px] h-[400px] w-[400px] rounded-full bg-blue-600/20 blur-3xl" />
+
+          {/* Top Brand Bar */}
+          <header className="relative z-10 flex items-center justify-between px-12 pt-10 xl:px-16">
             <Logo />
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[.07] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em] text-blue-100 backdrop-blur-md">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,.12)]" />
-              Secure operations portal
+            <div className="flex items-center gap-2 rounded-full border border-white/15 bg-white/[.08] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[.14em] text-blue-100 backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,.8)] animate-pulse" />
+              Production Enterprise Portal
             </div>
           </header>
 
-          <div className="relative z-10 flex flex-1 flex-col justify-center px-12 py-12 xl:px-16">
+          {/* Main Visual & Value Proposition */}
+          <div className="relative z-10 flex flex-col justify-center px-12 py-8 xl:px-16">
             <div className="max-w-2xl">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-300/15 bg-blue-400/10 px-3 py-1.5 text-xs font-semibold text-blue-200">
-                <BadgeCheck className="h-3.5 w-3.5" />
-                Purpose-built for mobile distribution
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-400/10 px-3.5 py-1.5 text-xs font-semibold text-blue-200 backdrop-blur-sm">
+                <Sparkles className="h-3.5 w-3.5 text-blue-300" />
+                Multi-Store Mobile Phone & Distribution ERP
               </div>
-              <h1 className="max-w-[650px] font-display text-[48px] font-extrabold leading-[1.04] tracking-[-0.05em] xl:text-[60px]">
-                Control every device.
-                <span className="mt-1 block bg-gradient-to-r from-blue-300 via-sky-200 to-white bg-clip-text text-transparent">Trust every number.</span>
+              <h1 className="max-w-[620px] font-display text-[46px] font-extrabold leading-[1.06] tracking-[-0.04em] xl:text-[56px]">
+                Control every handset.
+                <span className="mt-1 block bg-gradient-to-r from-blue-300 via-sky-200 to-white bg-clip-text text-transparent">
+                  Trust every rupee.
+                </span>
               </h1>
-              <p className="mt-6 max-w-xl text-[15px] leading-7 text-blue-100/65 xl:text-base">
-                One governed workspace for purchasing, IMEI custody, inventory, point of sale, returns, and the general ledger.
+              <p className="mt-5 max-w-xl text-[15px] leading-7 text-blue-100/70 xl:text-base">
+                An integrated, server-authoritative workspace for IMEI tracking, point of sale counter checkout, wholesale distribution, and real-time financial ledger accounting.
               </p>
             </div>
 
-            <div className="mt-10 max-w-[650px] rounded-[24px] border border-white/10 bg-white/[.075] p-2 shadow-[0_25px_70px_rgba(0,0,0,.22)] backdrop-blur-xl">
-              <div className="rounded-[18px] border border-white/[.07] bg-[#0b1d42]/80 p-5 xl:p-6">
+            {/* Architecture Control Card */}
+            <div className="mt-8 max-w-[640px] rounded-[24px] border border-white/10 bg-white/[.07] p-2 shadow-[0_25px_60px_rgba(0,0,0,.3)] backdrop-blur-xl">
+              <div className="rounded-[18px] border border-white/[.08] bg-[#091b3f]/85 p-5 xl:p-6">
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[.18em] text-blue-300/70">Control architecture</p>
-                    <p className="mt-1 text-sm font-semibold text-white">Document to ledger, without broken custody</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[.18em] text-blue-300/80">Compliance & Custody</p>
+                    <p className="mt-1 text-sm font-bold text-white">Full Audit Trail from Procurement to POS</p>
                   </div>
-                  <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/15 text-blue-300"><ScanLine className="h-4 w-4" /></div>
+                  <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/20 text-blue-300 border border-blue-400/20">
+                    <ScanLine className="h-4 w-4" />
+                  </div>
                 </div>
-                <div className="mt-5 grid grid-cols-3 gap-3">
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
                   {controls.map((item) => (
-                    <div key={item.title} className="rounded-2xl border border-white/[.08] bg-white/[.045] p-4">
+                    <div key={item.title} className="rounded-2xl border border-white/[.08] bg-white/[.04] p-3.5 transition hover:bg-white/[.07]">
                       <item.icon className="h-4 w-4 text-blue-300" />
-                      <p className="mt-4 text-xs font-bold text-white">{item.title}</p>
+                      <p className="mt-3 text-xs font-bold text-white">{item.title}</p>
                       <p className="mt-1 text-[10px] leading-4 text-blue-100/50">{item.detail}</p>
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-300/10 bg-emerald-300/[.06] px-4 py-3 text-[11px] text-emerald-100/75">
+
+                <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-400/[.08] px-4 py-2.5 text-[11px] text-emerald-100">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-                  Server-authoritative workflows keep stock, serialized units, and accounting in one atomic trail.
-                  <ArrowRight className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-300/60" />
+                  Zero data loss architecture · Dual IMEI validation · Immutable General Ledger
                 </div>
               </div>
             </div>
           </div>
 
-          <footer className="relative z-10 flex items-center justify-between px-12 pb-10 text-[10px] font-medium uppercase tracking-[.13em] text-blue-100/35 xl:px-16">
-            <span>Axon Mobile ERP</span>
-            <span>Access governed · Activity audited</span>
+          {/* Left Footer with Developer & Support Info */}
+          <footer className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-12 pb-9 text-xs font-medium text-blue-100/55 xl:px-16 border-t border-white/10 pt-5">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-400" />
+              <span>Axon Mobile ERP Enterprise v2.4</span>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-semibold text-slate-200">
+                © 2026 Copyright Reserved · <span className="text-white font-bold">Qasim Ali</span>
+              </p>
+              <div className="mt-0.5 flex items-center justify-end gap-1.5 text-[11px] text-blue-300 font-mono">
+                <Phone className="h-3 w-3" />
+                <a href="tel:03155049489" className="hover:underline text-blue-200">0315-5049489</a>
+              </div>
+            </div>
           </footer>
         </section>
 
-        <section className="relative flex min-h-screen items-center justify-center px-5 py-8 sm:px-10 lg:min-h-0 lg:px-14 xl:px-20">
-          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-blue-50/80 to-transparent lg:hidden" />
-          <div className="relative w-full max-w-[440px] animate-slide-up">
-            <div className="mb-12 flex items-center justify-between lg:hidden">
-              <Logo light />
-              <div className="flex items-center gap-1.5 rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 shadow-sm">
-                <ShieldCheck className="h-3 w-3" /> Secure
-              </div>
+        {/* RIGHT COLUMN: Sign In Form (Clean, Modern & Accessible) */}
+        <section className="relative flex min-h-screen flex-col justify-between px-6 py-10 sm:px-12 lg:min-h-0 lg:px-14 xl:px-20 bg-white">
+          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-blue-50/70 to-transparent lg:hidden pointer-events-none" />
+          
+          {/* Mobile Top Brand Bar */}
+          <div className="relative z-10 flex items-center justify-between lg:hidden pb-6 border-b border-slate-100">
+            <Logo light />
+            <div className="flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+              <ShieldCheck className="h-3 w-3" /> Enterprise
             </div>
+          </div>
 
+          <div className="relative my-auto w-full max-w-[420px] mx-auto py-8">
             <div className="mb-8">
-              <div className="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-700 shadow-[0_10px_30px_rgba(37,99,235,.12)]">
-                <Boxes className="h-5 w-5" />
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-700 shadow-[0_8px_24px_rgba(37,99,235,.12)]">
+                <Boxes className="h-6 w-6" />
               </div>
-              <p className="text-[11px] font-extrabold uppercase tracking-[.18em] text-blue-700">Authorized workspace</p>
-              <h2 className="mt-3 font-display text-[34px] font-extrabold leading-tight tracking-[-0.04em] text-slate-950 sm:text-[38px]">Welcome back</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-500">Sign in with your organization account to continue to operations.</p>
+              <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-700">Authorized Access</p>
+              <h2 className="mt-2 font-display text-[32px] font-extrabold leading-tight tracking-[-0.03em] text-slate-950 sm:text-[36px]">
+                Welcome Back
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                Sign in with your organization credentials to access sales, stock, and finance operations.
+              </p>
             </div>
 
             <LoginForm />
 
-            <div className="mt-9 border-t border-slate-100 pt-6">
-              <div className="flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-slate-400">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-blue-600" />
-                Protected by HttpOnly sessions and server-enforced access control
+            <div className="mt-8 border-t border-slate-100 pt-5">
+              <div className="flex items-center justify-center gap-2 text-center text-[11px] font-medium text-slate-400">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                Protected by 256-bit encrypted HTTP-only session tokens
               </div>
             </div>
           </div>
+
+          {/* Form Bottom Footer: Prominent Professional Copyright & Support Notice */}
+          <footer className="mt-6 border-t border-slate-100 pt-5 text-center space-y-1.5">
+            <div className="flex items-center justify-center gap-2 text-xs font-semibold text-slate-600">
+              <span>© 2026 Copyright Reserved</span>
+              <span className="text-slate-300">·</span>
+              <span className="font-bold text-slate-900">Qasim Ali</span>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-xs font-medium text-blue-700">
+              <Phone className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+              <a href="tel:03155049489" className="hover:underline font-mono font-bold tracking-tight">
+                0315-5049489
+              </a>
+              <span className="text-slate-300">·</span>
+              <span className="text-slate-500 text-[11px] font-normal">Technical Inquiries & Licensing</span>
+            </div>
+          </footer>
+
         </section>
       </div>
     </main>
