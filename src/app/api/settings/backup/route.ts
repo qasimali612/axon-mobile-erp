@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { apiError, assertSameOrigin } from "@/lib/api";
+import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { requirePermission } from "@/lib/auth";
-import { createDatabaseBackup, listDatabaseBackups } from "@/lib/backup/backup-service";
+import { createDatabaseBackup, getBackupDir, listDatabaseBackups } from "@/lib/backup/backup-service";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 
@@ -16,8 +16,23 @@ export async function GET(request: Request) {
     // Direct download file stream
     if (downloadFile) {
       const sanitized = path.basename(downloadFile);
-      const filePath = path.join(process.cwd(), "backups", sanitized);
-      const content = await fs.readFile(filePath, "utf8");
+      const primaryPath = path.join(getBackupDir(), sanitized);
+      const fallbackPath = path.join(process.cwd(), "backups", sanitized);
+
+      let content: string | null = null;
+      try {
+        content = await fs.readFile(primaryPath, "utf8");
+      } catch {
+        try {
+          content = await fs.readFile(fallbackPath, "utf8");
+        } catch {
+          content = null;
+        }
+      }
+
+      if (!content) {
+        throw new ApiError(404, "BACKUP_NOT_FOUND", `Backup archive "${sanitized}" was not found.`);
+      }
 
       return new NextResponse(content, {
         headers: {
@@ -72,6 +87,7 @@ export async function POST(request: Request) {
           timestamp: result.timestamp,
           totalRecords: result.totalRecords,
           counts: result.counts,
+          payload: result.payload,
         },
       }),
       { status: 201 },

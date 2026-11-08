@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 
@@ -12,13 +13,28 @@ export type BackupSummary = {
   counts: Record<string, number>;
 };
 
-const BACKUP_DIR = path.join(process.cwd(), "backups");
+export function getBackupDir(): string {
+  // On Vercel / AWS Lambda / Serverless, process.cwd() is read-only.
+  // os.tmpdir() (/tmp) is the only guaranteed writable directory.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === "production") {
+    return path.join(os.tmpdir(), "axon-backups");
+  }
+  return path.join(process.cwd(), "backups");
+}
 
-async function ensureBackupDir() {
+export async function ensureBackupDir(): Promise<string> {
+  const dir = getBackupDir();
   try {
-    await fs.mkdir(BACKUP_DIR, { recursive: true });
-  } catch {
-    // Ignore already exists
+    await fs.mkdir(dir, { recursive: true });
+    return dir;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code;
+    if (code === "EROFS" || code === "EACCES") {
+      const fallback = path.join(os.tmpdir(), "axon-backups");
+      await fs.mkdir(fallback, { recursive: true }).catch(() => {});
+      return fallback;
+    }
+    return dir;
   }
 }
 
@@ -26,7 +42,7 @@ async function ensureBackupDir() {
  * Creates a complete, consistent JSON snapshot of the ERP company database.
  */
 export async function createDatabaseBackup(companyId: string, userId?: string) {
-  await ensureBackupDir();
+  const backupDir = await ensureBackupDir();
 
   // Force checkpoint if possible
   try {
@@ -204,7 +220,7 @@ export async function createDatabaseBackup(companyId: string, userId?: string) {
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `axon-backup-${company?.code || "ERP"}-${stamp}.json`;
-  const filePath = path.join(BACKUP_DIR, filename);
+  const filePath = path.join(backupDir, filename);
 
   const payload = {
     version: "1.0",
@@ -297,14 +313,20 @@ export async function createDatabaseBackup(companyId: string, userId?: string) {
  * Lists all existing backup files on disk with metadata.
  */
 export async function listDatabaseBackups(): Promise<BackupSummary[]> {
-  await ensureBackupDir();
-  const entries = await fs.readdir(BACKUP_DIR);
+  const dir = await ensureBackupDir();
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    entries = [];
+  }
+
   const backups: BackupSummary[] = [];
 
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
     try {
-      const fullPath = path.join(BACKUP_DIR, entry);
+      const fullPath = path.join(dir, entry);
       const stat = await fs.stat(fullPath);
       const raw = await fs.readFile(fullPath, "utf8");
       const parsed = JSON.parse(raw);
@@ -321,6 +343,33 @@ export async function listDatabaseBackups(): Promise<BackupSummary[]> {
     } catch {
       // Skip invalid files
     }
+  }
+
+  // Also inspect process.cwd()/backups if different and exists
+  const localDir = path.join(process.cwd(), "backups");
+  if (dir !== localDir) {
+    try {
+      const localEntries = await fs.readdir(localDir);
+      for (const entry of localEntries) {
+        if (!entry.endsWith(".json") || backups.some((b) => b.filename === entry)) continue;
+        try {
+          const fullPath = path.join(localDir, entry);
+          const stat = await fs.stat(fullPath);
+          const raw = await fs.readFile(fullPath, "utf8");
+          const parsed = JSON.parse(raw);
+
+          backups.push({
+            filename: entry,
+            sizeBytes: stat.size,
+            createdAt: parsed.timestamp || stat.birthtime.toISOString(),
+            recordCount: parsed.totalRecords || 0,
+            companyCode: parsed.company?.code || "ERP",
+            companyName: parsed.company?.name || "Axon ERP",
+            counts: parsed.counts || {},
+          });
+        } catch {}
+      }
+    } catch {}
   }
 
   return backups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

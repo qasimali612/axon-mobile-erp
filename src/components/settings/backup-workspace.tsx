@@ -91,7 +91,21 @@ export function BackupWorkspace({
       const res = await fetch("/api/settings/backup", { method: "POST" });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error?.message || "Failed to create backup.");
-      toast.success("Database backup created successfully!");
+
+      // Auto-trigger browser download of the verified snapshot
+      if (body.data?.payload) {
+        const blob = new Blob([JSON.stringify(body.data.payload, null, 2)], { type: "application/json" });
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = body.data.filename || `axon-backup-${companyCode}-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      }
+
+      toast.success("Database backup created and downloaded successfully!");
       void loadData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Backup creation failed.");
