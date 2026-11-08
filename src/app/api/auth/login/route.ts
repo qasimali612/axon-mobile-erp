@@ -69,16 +69,36 @@ export async function POST(request: Request) {
     }
 
     const membership = user.memberships[0];
-    const [branch, warehouse] = await Promise.all([
-      prisma.branch.findFirst({
-        where: { companyId: membership.companyId, isActive: true },
-        orderBy: [{ type: "asc" }, { name: "asc" }],
-      }),
-      prisma.warehouse.findFirst({
-        where: { companyId: membership.companyId, isActive: true },
-        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-      }),
-    ]);
+
+    // Check for user-scoped role assignments
+    const scopedBranchId = membership.userRoles.find((ur) => ur.branchId)?.branchId;
+    const scopedWarehouseId = membership.userRoles.find((ur) => ur.warehouseId)?.warehouseId;
+
+    // Resolve branch: Scoped role branch -> HEAD_OFFICE -> first active branch
+    const branch = scopedBranchId
+      ? await prisma.branch.findFirst({
+          where: { id: scopedBranchId, companyId: membership.companyId, isActive: true },
+        })
+      : (await prisma.branch.findFirst({
+          where: { companyId: membership.companyId, type: "HEAD_OFFICE", isActive: true },
+        })) ||
+        (await prisma.branch.findFirst({
+          where: { companyId: membership.companyId, isActive: true },
+          orderBy: [{ name: "asc" }],
+        }));
+
+    // Resolve warehouse: Must belong to the resolved active branch to prevent scope guard violation
+    const warehouse = branch
+      ? (scopedWarehouseId
+          ? await prisma.warehouse.findFirst({
+              where: { id: scopedWarehouseId, companyId: membership.companyId, branchId: branch.id, isActive: true },
+            })
+          : null) ||
+        (await prisma.warehouse.findFirst({
+          where: { companyId: membership.companyId, branchId: branch.id, isActive: true },
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        }))
+      : null;
 
     await prisma.$transaction([
       prisma.user.update({
