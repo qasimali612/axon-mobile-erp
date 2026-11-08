@@ -58,10 +58,52 @@ export async function apiError(error: unknown) {
     );
   }
 
-  // Constraint violations are client-correctable conditions, not server faults. Mapping them keeps
-  // duplicate submissions and stale edits from surfacing as generic 500s.
-  const known = error as { name?: string; code?: string; meta?: { target?: unknown } };
+  // Map database and constraint violations to clear, actionable user messages
+  const known = error as {
+    name?: string;
+    code?: string;
+    meta?: { target?: unknown; table?: unknown };
+    message?: string;
+  };
+
+  if (known?.name === "PrismaClientInitializationError") {
+    console.error("[Database Connection Error]:", known.message);
+    return NextResponse.json(
+      {
+        error: {
+          code: "DATABASE_UNREACHABLE",
+          message: "Database connection failed. Check that DATABASE_URL is correctly set in your Vercel Environment Variables and that your cloud PostgreSQL database is active.",
+        },
+      },
+      { status: 503 },
+    );
+  }
+
   if (known?.name === "PrismaClientKnownRequestError") {
+    if (known.code === "P1000" || known.code === "P1001" || known.code === "P1002" || known.code === "P1017") {
+      console.error("[Database Server Unreachable]:", known.code, known.message);
+      return NextResponse.json(
+        {
+          error: {
+            code: "DATABASE_UNREACHABLE",
+            message: "Cannot reach database server. Check your DATABASE_URL connection string and firewall/IP whitelist rules in your cloud database provider.",
+          },
+        },
+        { status: 503 },
+      );
+    }
+    if (known.code === "P2021") {
+      console.error("[Database Not Migrated]:", known.message);
+      return NextResponse.json(
+        {
+          error: {
+            code: "DATABASE_NOT_MIGRATED",
+            message: "Database tables not found. Run 'npx prisma migrate deploy' to apply migrations to your database.",
+          },
+        },
+        { status: 503 },
+      );
+    }
     if (known.code === "P2002") {
       return NextResponse.json(
         { error: { code: "DUPLICATE_RECORD", message: "A record with the same unique values already exists.", details: known.meta?.target } },
@@ -80,6 +122,21 @@ export async function apiError(error: unknown) {
         { status: 409 },
       );
     }
+  }
+
+  // Handle PostgreSQL check/trigger scope guard violations (ERRCODE 23514)
+  const errStr = String(error?.toString() || "");
+  if (errStr.includes("23514") || errStr.includes("outside active branch")) {
+    console.error("[Scope Guard Violation]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "SCOPE_GUARD_VIOLATION",
+          message: "Location configuration error: Session warehouse does not belong to the active branch.",
+        },
+      },
+      { status: 422 },
+    );
   }
 
   // Always log unexpected server errors for operators; the client response stays generic.

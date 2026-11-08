@@ -7,29 +7,49 @@ export async function GET(request: Request) {
   const started = performance.now();
   try {
     await prisma.$queryRaw`SELECT 1`;
-    const details = new URL(request.url).searchParams.get("details") === "true";
-    if (!details) {
-      return NextResponse.json({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        database: "reachable",
-        latencyMs: Math.round(performance.now() - started),
-      });
+
+    let tablesExist = true;
+    let companyCount = 0;
+    let userCount = 0;
+    let branchCount = 0;
+
+    try {
+      [companyCount, userCount, branchCount] = await Promise.all([
+        prisma.company.count(),
+        prisma.user.count(),
+        prisma.branch.count(),
+      ]);
+    } catch {
+      tablesExist = false;
     }
 
-    await requirePermission("system.health.view");
-    const [companies, users, sessions] = await Promise.all([
-      prisma.company.count({ where: { status: "ACTIVE" } }),
-      prisma.user.count({ where: { status: "ACTIVE" } }),
-      prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
-    ]);
+    const latencyMs = Math.round(performance.now() - started);
+
+    if (!tablesExist) {
+      return NextResponse.json(
+        {
+          status: "needs_migration",
+          database: "connected",
+          tablesExist: false,
+          latencyMs,
+          message: "Database is reachable, but schema migrations have not been applied. Run 'npx prisma migrate deploy'.",
+        },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || "0.1.0",
       database: "reachable",
-      latencyMs: Math.round(performance.now() - started),
-      counts: { companies, activeUsers: users, activeSessions: sessions },
+      latencyMs,
+      diagnostics: {
+        tablesMigrated: true,
+        companies: companyCount,
+        users: userCount,
+        branches: branchCount,
+        readyForLogin: userCount > 0 && branchCount > 0,
+      },
     });
   } catch (error) {
     return apiError(error);

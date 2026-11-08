@@ -18,6 +18,7 @@
     "test:journal-workflow": "bash scripts/run-with-env.sh tsx scripts/verify-journal-workflow.ts",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
+    "db:setup": "tsx scripts/setup-cloud-db.ts",
     "db:prepare": "prisma generate && prisma migrate deploy && prisma db seed",
     "db:seed": "prisma db seed",
     "db:clean": "bash scripts/run-with-env.sh tsx scripts/reset-to-clean-slate.ts",
