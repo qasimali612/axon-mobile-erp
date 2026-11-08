@@ -124,18 +124,41 @@ export async function apiError(error: unknown) {
     }
   }
 
-  // Handle PostgreSQL check/trigger scope guard violations (ERRCODE 23514)
+  // Handle PostgreSQL check/trigger scope guard and maker-checker violations (ERRCODE 23514)
   const errStr = String(error?.toString() || "");
-  if (errStr.includes("23514") || errStr.includes("outside active branch")) {
+  if (
+    errStr.includes("outside active branch") ||
+    errStr.includes("outside selected branch") ||
+    errStr.includes("outside active company") ||
+    errStr.includes("Session warehouse is outside")
+  ) {
     console.error("[Scope Guard Violation]:", errStr);
     return NextResponse.json(
       {
         error: {
           code: "SCOPE_GUARD_VIOLATION",
-          message: "Location configuration error: Session warehouse does not belong to the active branch.",
+          message: "Location configuration error: Selected location does not belong to the active company or branch.",
         },
       },
       { status: 422 },
+    );
+  }
+
+  if (
+    errStr.includes("maker_checker") ||
+    errStr.includes("workflow_metadata") ||
+    errStr.includes("Preparer cannot approve") ||
+    errStr.includes("Preparer cannot post")
+  ) {
+    console.error("[Maker Checker Violation]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "MAKER_CHECKER_REQUIRED",
+          message: "Segregation of duties: In Multi-User Mode, a separate authorized officer must approve or post this record. Switch to Single-User Mode in the top navigation bar if operating as a sole business owner.",
+        },
+      },
+      { status: 409 },
     );
   }
 

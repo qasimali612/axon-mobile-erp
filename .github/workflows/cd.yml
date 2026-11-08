@@ -59,3 +59,4 @@ jobs:
           else
             echo "⚠️ Health check returned status $STATUS (deployment may still be building on Vercel)."
           fi
+

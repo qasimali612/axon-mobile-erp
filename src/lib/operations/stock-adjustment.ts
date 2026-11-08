@@ -405,7 +405,7 @@ export async function submitStockAdjustment(actor: AdjustmentActor, id: string) 
     });
     await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: record.branchId, warehouseId: record.warehouseId, action: "STOCK_ADJUSTMENT_SUBMITTED", module: "inventory", entityType: "StockAdjustment", entityId: id, entityReference: record.adjustmentNumber, previousValues: { status: record.status }, newValues: { status: updated.status } }, tx);
     return updated;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 type OriginalMovement = { id: string; quantity: Prisma.Decimal; totalCost: Prisma.Decimal };
@@ -725,7 +725,7 @@ export async function cancelStockAdjustment(actor: AdjustmentActor, id: string, 
     const updated = await tx.stockAdjustment.update({ where: { id }, data: { status: OperationalDocumentStatus.CANCELLED, cancelledAt: new Date() }, include: stockAdjustmentInclude });
     await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: record.branchId, warehouseId: record.warehouseId, action: "STOCK_ADJUSTMENT_CANCELLED", module: "inventory", entityType: "StockAdjustment", entityId: id, entityReference: record.adjustmentNumber, reason, previousValues: { status: record.status }, newValues: { status: updated.status }, metadata: { stockEffect: "NONE" } }, tx);
     return updated;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 export async function reverseStockAdjustment(actor: AdjustmentActor, id: string, input: StockAdjustmentReversalInput) {
