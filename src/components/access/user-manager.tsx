@@ -57,6 +57,11 @@ export function UserManager({ initialMemberships, roles, branches, warehouses, p
 
   useEffect(() => {
     if (searchParams.get("new") === "1" && canCreate) openCreate();
+    const editId = searchParams.get("edit");
+    if (editId && canEdit) {
+      const target = memberships.find((m) => m.user.id === editId || m.id === editId);
+      if (target) openEdit(target);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

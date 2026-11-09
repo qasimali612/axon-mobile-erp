@@ -182,7 +182,13 @@ export function PaymentRegister({
 
   useEffect(() => {
     void load();
-  }, [load]);
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("new") === "1" && permissions.includes("PAYMENT_CREATE")) {
+        setOpen(true);
+      }
+    }
+  }, [load, permissions]);
 
   const accounts = useMemo(() => {
     return [

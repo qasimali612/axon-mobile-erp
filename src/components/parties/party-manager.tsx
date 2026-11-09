@@ -11,6 +11,7 @@ import {
   ChevronRight,
   CreditCard,
   ExternalLink,
+  Eye,
   MapPin,
   Pencil,
   Phone,
@@ -98,6 +99,15 @@ export function PartyManager({
   useEffect(() => {
     if (searchParams.get("new") === "1" && can(tab)) {
       openCreate();
+    }
+    const editId = searchParams.get("edit");
+    if (editId && can(tab)) {
+      fetch(`/api/${tab}/${editId}`)
+        .then((res) => res.json())
+        .then((body) => {
+          if (body.data) openEdit(body.data);
+        })
+        .catch(() => undefined);
     }
   }, []);
 
@@ -355,7 +365,9 @@ export function PartyManager({
                   <tr key={row.id} className="text-xs hover:bg-slate-50/50">
                     <td className="px-5 py-3.5">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-slate-900">{row.name}</span>
+                        <Link href={`/${tab}/${row.id}`} className="font-bold text-slate-900 hover:text-blue-700 hover:underline">
+                          {row.name}
+                        </Link>
                         {row.customerType ? (
                           <span
                             className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
@@ -422,6 +434,14 @@ export function PartyManager({
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/${tab}/${row.id}`}
+                          className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 px-2 text-[10px] font-semibold text-slate-700 hover:bg-slate-100"
+                          title="View Profile & Sub-Ledger"
+                        >
+                          <Eye className="h-3 w-3" />
+                          Profile
+                        </Link>
                         <Link
                           href={`/finance/subledgers?party=${tab === "customers" ? "customer" : "supplier"}:${row.id}`}
                           className="inline-flex h-7 items-center gap-1 rounded border border-slate-200 px-2 text-[10px] font-semibold text-slate-600 hover:bg-slate-100"

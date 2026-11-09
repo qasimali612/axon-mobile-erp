@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Banknote, ExternalLink, FileText, Printer, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Banknote, Edit3, ExternalLink, FileText, Printer, Receipt, ShieldAlert } from "lucide-react";
 import { OperationalDocumentStatus, PaymentDirection, Prisma } from "@prisma/client";
 import { DocumentReversalAction } from "@/components/operations/document-reversal-action";
 import { Badge } from "@/components/ui/badge";
@@ -102,7 +102,48 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
   return <div className="space-y-5">
     <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
       <div><Link href="/sales" className="inline-flex items-center gap-1 text-xs font-bold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>Sales register</Link><div className="mt-3 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black text-slate-950 sm:text-[30px]">{invoice.invoiceNumber}</h1><Badge tone={statusTone(invoice.status)}>{titleCase(invoice.status)}</Badge>{invoice.reversalOfId && <Badge tone="red">Reversal document</Badge>}</div><p className="mt-1.5 text-sm text-slate-500">{invoice.customer.name} · {invoice.branch.name} / {invoice.warehouse.name} · {formatDate(invoice.invoiceDate)}</p></div>
-      <div className="flex flex-wrap gap-2">{invoice.status === OperationalDocumentStatus.POSTED && outstanding.gt(0) && scopedPermission(context, "PAYMENT_CREATE", invoice.branchId, invoice.warehouseId) && <Link href={`/finance/payments?invoiceId=${invoice.id}&amount=${outstanding.toFixed(4)}`} className="inline-flex h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700"><Banknote className="h-4 w-4"/>Receive payment</Link>}{canReverse && <DocumentReversalAction documentId={invoice.id} documentNumber={invoice.invoiceNumber} documentLabel="sales invoice" endpoint={`/api/sales/invoices/${invoice.id}/reverse`} consequence="Posting is blocked by posted allocations or returns and by any physical unit that is no longer in its original sold custody state." disabledReason={disabledReason}/>}<Link href={`/sales/${invoice.id}/print`} target="_blank" className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700"><Printer className="h-4 w-4"/>Print</Link></div>
+      <div className="flex flex-wrap items-center gap-2">
+        {invoice.status !== OperationalDocumentStatus.POSTED && invoice.status !== OperationalDocumentStatus.REVERSED && invoice.status !== OperationalDocumentStatus.CANCELLED && (
+          <Link
+            href={`/sales/${invoice.id}/edit`}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 transition"
+          >
+            <Edit3 className="h-4 w-4" /> Edit Draft
+          </Link>
+        )}
+        {invoice.status === OperationalDocumentStatus.POSTED && outstanding.gt(0) && scopedPermission(context, "PAYMENT_CREATE", invoice.branchId, invoice.warehouseId) && (
+          <Link
+            href={`/finance/payments?invoiceId=${invoice.id}&amount=${outstanding.toFixed(4)}`}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 hover:bg-blue-100 transition"
+          >
+            <Banknote className="h-4 w-4" /> Receive payment
+          </Link>
+        )}
+        {canReverse && (
+          <DocumentReversalAction
+            documentId={invoice.id}
+            documentNumber={invoice.invoiceNumber}
+            documentLabel="sales invoice"
+            endpoint={`/api/sales/invoices/${invoice.id}/reverse`}
+            consequence="Posting is blocked by posted allocations or returns and by any physical unit that is no longer in its original sold custody state."
+            disabledReason={disabledReason}
+          />
+        )}
+        <Link
+          href={`/sales/${invoice.id}/receipt`}
+          target="_blank"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+        >
+          <Receipt className="h-4 w-4" /> POS Receipt
+        </Link>
+        <Link
+          href={`/sales/${invoice.id}/print`}
+          target="_blank"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+        >
+          <Printer className="h-4 w-4" /> Print A4
+        </Link>
+      </div>
     </div>
 
     {(invoice.reversalOf || invoice.reversals.length > 0) && <section className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-950"><div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-700"/><div><b>Immutable reversal chain</b>{invoice.reversalOf && <p className="mt-1">This document reverses <Link className="font-bold underline" href={`/sales/${invoice.reversalOf.id}`}>{invoice.reversalOf.invoiceNumber}</Link>.</p>}{invoice.reversals.map((item) => <p key={item.id} className="mt-1">Reversed by <Link className="font-bold underline" href={`/sales/${item.id}`}>{item.invoiceNumber}</Link> · {titleCase(item.status)}{item.postedAt ? ` · ${formatDate(item.postedAt, true)}` : ""}</p>)}</div></div></section>}

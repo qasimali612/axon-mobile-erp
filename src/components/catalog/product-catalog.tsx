@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Archive,
@@ -8,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   Filter,
   Layers,
   MoreHorizontal,
@@ -217,6 +219,32 @@ export function ProductCatalog({
 
   useEffect(() => {
     if (searchParams.get("new") === "1" && canCreate) openCreate();
+    const editId = searchParams.get("edit");
+    if (editId && canEdit) {
+      const match = products.find((p) => p.id === editId);
+      if (match) openEdit(match);
+      else {
+        fetch(`/api/products/${editId}`)
+          .then((res) => res.json())
+          .then((body) => {
+            if (body.data) openEdit(body.data as Product);
+          })
+          .catch(() => undefined);
+      }
+    }
+    const variantId = searchParams.get("variants");
+    if (variantId) {
+      const match = products.find((p) => p.id === variantId);
+      if (match) setVariantProduct(match);
+      else {
+        fetch(`/api/products/${variantId}`)
+          .then((res) => res.json())
+          .then((body) => {
+            if (body.data) setVariantProduct(body.data as Product);
+          })
+          .catch(() => undefined);
+      }
+    }
     const requestedSearch = searchParams.get("search")?.trim() || "";
     const requestedTracking = searchParams.get("tracking")?.trim() || "";
     if (requestedSearch || requestedTracking) {
@@ -598,7 +626,7 @@ export function ProductCatalog({
                     const barcode = product.barcodes.find((item) => item.variantId === variant?.id && item.isPrimary);
                     return (
                       <tr key={product.id} className="group hover:bg-slate-50/60">
-                        <td className="table-cell"><div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">{["SMARTPHONE", "FEATURE_PHONE", "TABLET"].includes(product.productType) ? <Smartphone className="h-[18px] w-[18px]" /> : <PackageOpen className="h-[18px] w-[18px]" />}</span><div><p className="max-w-[260px] truncate font-semibold text-slate-800">{product.name}</p><p className="mt-1 font-mono text-[10px] text-slate-400">{product.sku}{product.modelCode ? ` · ${product.modelCode}` : ""}</p></div></div></td>
+                        <td className="table-cell"><div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">{["SMARTPHONE", "FEATURE_PHONE", "TABLET"].includes(product.productType) ? <Smartphone className="h-[18px] w-[18px]" /> : <PackageOpen className="h-[18px] w-[18px]" />}</span><div><Link href={`/catalog/products/${product.id}`} className="max-w-[260px] truncate font-semibold text-slate-800 hover:text-blue-700 hover:underline block">{product.name}</Link><p className="mt-1 font-mono text-[10px] text-slate-400">{product.sku}{product.modelCode ? ` · ${product.modelCode}` : ""}</p></div></div></td>
                         <td className="table-cell">
                           <p className="text-xs font-semibold text-slate-800">{variant?.name || "No variant"}</p>
                           <p className="mt-0.5 text-[10px] text-slate-400">
@@ -629,7 +657,7 @@ export function ProductCatalog({
                         {canViewCost ? <td className="table-cell text-right font-mono text-xs text-slate-600">{formatMoney(variant?.purchasePrice || 0, currency)}</td> : null}
                         <td className="table-cell text-right"><p className="font-mono text-xs font-semibold text-slate-800">{formatMoney(variant?.retailPrice || 0, currency)}</p><p className="mt-1 text-[9px] text-slate-400">Min {formatMoney(variant?.minimumSellingPrice || 0, currency)}</p></td>
                         <td className="table-cell"><Badge tone={product.status === "ACTIVE" ? "green" : product.status === "ARCHIVED" ? "red" : "amber"}>{titleCase(product.status)}</Badge></td>
-                        <td className="table-cell relative"><button onClick={() => setActionsId(actionsId === product.id ? null : product.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow"><MoreHorizontal className="h-4 w-4" /></button>{actionsId === product.id ? <div className="absolute right-8 top-10 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-float">{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => { setVariantProduct(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" />Manage variants</button> : null}{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => openEdit(product)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" />Edit product</button> : null}{canArchive && product.status !== "ARCHIVED" ? <button onClick={() => { setArchiveTarget(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Archive className="h-3.5 w-3.5" />Archive</button> : null}</div> : null}</td>
+                        <td className="table-cell relative"><button onClick={() => setActionsId(actionsId === product.id ? null : product.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow"><MoreHorizontal className="h-4 w-4" /></button>{actionsId === product.id ? <div className="absolute right-8 top-10 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-float"><Link href={`/catalog/products/${product.id}`} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Eye className="h-3.5 w-3.5" />View details</Link>{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => { setVariantProduct(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" />Manage variants</button> : null}{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => openEdit(product)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" />Edit product</button> : null}{canArchive && product.status !== "ARCHIVED" ? <button onClick={() => { setArchiveTarget(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Archive className="h-3.5 w-3.5" />Archive</button> : null}</div> : null}</td>
                       </tr>
                     );
                   })}

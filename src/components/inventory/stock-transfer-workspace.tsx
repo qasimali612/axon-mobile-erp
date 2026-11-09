@@ -102,9 +102,11 @@ export function StockTransferWorkspace({
     setDetail(body.data);
   }, []);
   useEffect(() => {
-    const transferId = new URLSearchParams(window.location.search).get("transfer");
+    const params = new URLSearchParams(window.location.search);
+    const transferId = params.get("transfer");
     if (transferId) void openDetail(transferId);
-  }, [openDetail]);
+    if (params.get("new") === "1" && permissions.create) setCreateOpen(true);
+  }, [openDetail, permissions.create]);
 
   async function runAction(action: string, payload?: Row) {
     if (!detail) return;

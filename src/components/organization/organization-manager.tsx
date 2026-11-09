@@ -168,9 +168,9 @@ export function OrganizationManager({
 
   useEffect(() => {
     const intent = searchParams.get("new");
-    if (intent === "branch" && canCreateBranch) openNewBranch();
-    if (intent === "warehouse" && canCreateWarehouse) openNewWarehouse();
-    if (intent === "department" && canCreateBranch) openNewDepartment();
+    if ((intent === "branch" || (intent === "1" && tab === "branches")) && canCreateBranch) openNewBranch();
+    if ((intent === "warehouse" || (intent === "1" && tab === "warehouses")) && canCreateWarehouse) openNewWarehouse();
+    if ((intent === "department" || (intent === "1" && tab === "departments")) && canCreateBranch) openNewDepartment();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

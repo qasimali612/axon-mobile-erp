@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDownRight,
   ArrowRight,
@@ -94,10 +94,17 @@ export function JournalRegister({
   initialStatus: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState(initialSearch || "");
   const [statusFilter, setStatusFilter] = useState(initialStatus || "ALL");
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && canCreate) {
+      setCreateOpen(true);
+    }
+  }, [searchParams, canCreate]);
 
   // Form State
   const [branchId, setBranchId] = useState(branches[0]?.id || "");
