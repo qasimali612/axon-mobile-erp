@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, assertSameOrigin } from "@/lib/api";
 import { requirePermission } from "@/lib/auth";
-import { updatePaymentDraft } from "@/lib/operations/payments";
+import { deletePayment, updatePaymentDraft } from "@/lib/operations/payments";
 import { paymentDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -205,6 +205,27 @@ export async function PATCH(request: Request, { params }: RouteProps) {
       },
       paymentId,
       body,
+    );
+    return NextResponse.json(jsonSafe({ data }));
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function DELETE(request: Request, { params }: RouteProps) {
+  try {
+    assertSameOrigin(request);
+    const { id } = await params;
+    const paymentId = idSchema.parse(id);
+    const context = await requirePermission("PAYMENT_CREATE");
+    const data = await deletePayment(
+      {
+        companyId: context.company.id,
+        userId: context.user.id,
+        currencyCode: context.company.currencyCode,
+        permissions: context.permissions,
+      },
+      paymentId,
     );
     return NextResponse.json(jsonSafe({ data }));
   } catch (error) {

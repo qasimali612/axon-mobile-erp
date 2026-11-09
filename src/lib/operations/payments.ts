@@ -401,3 +401,45 @@ export async function postPayment(actor: PaymentActor, id: string) {
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
   );
 }
+
+export async function deletePayment(actor: PaymentActor, id: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      await ensureSingleUserDatabase(tx as any);
+      const payment = await lockPayment(tx, id, actor.companyId);
+      if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment voucher was not found.");
+      if (
+        payment.status === OperationalDocumentStatus.POSTED ||
+        payment.status === OperationalDocumentStatus.REVERSED
+      ) {
+        throw new ApiError(
+          409,
+          "INVALID_DOCUMENT_STATE",
+          "Posted or reversed payment vouchers cannot be deleted directly. You must reverse a posted payment instead.",
+        );
+      }
+
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
+      await tx.payment.delete({ where: { id } });
+
+      await appendAudit(
+        {
+          companyId: actor.companyId,
+          actorId: actor.userId,
+          branchId: payment.branchId,
+          action: "PAYMENT_DELETED",
+          module: "finance",
+          entityType: "Payment",
+          entityId: id,
+          entityReference: payment.paymentNumber,
+          previousValues: { amount: moneyString(payment.amount), status: payment.status },
+          metadata: { paymentNumber: payment.paymentNumber },
+        },
+        tx,
+      );
+
+      return { id, paymentNumber: payment.paymentNumber, success: true };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}

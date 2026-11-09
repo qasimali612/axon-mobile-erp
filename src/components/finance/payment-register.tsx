@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Trash2,
   UserRound,
   Wallet,
   X,
@@ -100,6 +101,7 @@ export function PaymentRegister({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Search & Filter state
   const [search, setSearch] = useState("");
@@ -465,6 +467,29 @@ export function PaymentRegister({
       toast.error("Network error posting payment.");
     } finally {
       setActingId(null);
+    }
+  }
+
+  async function handleDeletePayment(row: PaymentRow | { id: string; paymentNumber: string }) {
+    if (!window.confirm(`Are you sure you want to permanently delete payment voucher ${row.paymentNumber}? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(row.id);
+    try {
+      const response = await fetch(`/api/payments/${row.id}`, { method: "DELETE" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        return toast.error(body?.error?.message || "Failed to delete payment voucher.");
+      }
+      toast.success(`Payment voucher ${row.paymentNumber} deleted successfully.`);
+      if (selectedPayment?.id === row.id) {
+        setSelectedPayment(null);
+      }
+      void load();
+    } catch {
+      toast.error("Network error deleting payment voucher.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -1080,7 +1105,7 @@ export function PaymentRegister({
                           <Button
                             size="sm"
                             className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2.5 text-xs font-bold shadow-xs h-8"
-                            disabled={actingId === row.id}
+                            disabled={actingId === row.id || deletingId === row.id}
                             onClick={() => void directPost(row)}
                             title="Post voucher directly to General Ledger"
                           >
@@ -1090,6 +1115,25 @@ export function PaymentRegister({
                               <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-200" />
                             )}
                             Post Now
+                          </Button>
+                        )}
+
+                        {/* Delete Unposted Payment Voucher */}
+                        {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={actingId === row.id || deletingId === row.id}
+                            onClick={() => void handleDeletePayment(row)}
+                            className="px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300 gap-1 h-8 text-xs font-semibold"
+                            title="Delete this payment voucher"
+                          >
+                            {deletingId === row.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                            )}
+                            Delete
                           </Button>
                         )}
                       </div>
@@ -1336,43 +1380,46 @@ export function PaymentRegister({
                     <Printer className="h-4 w-4" />
                     Print Voucher
                   </Link>
-                  {(selectedPayment.status === "DRAFT" || selectedPayment.status === "SUBMITTED") && can("PAYMENT_CREATE") && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const p = selectedPayment;
-                        setSelectedPayment(null);
-                        void startEdit(p);
-                      }}
-                      className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Edit Voucher
-                    </Button>
-                  )}
-                  {(selectedPayment.status === "DRAFT" || selectedPayment.status === "SUBMITTED") && can("PAYMENT_POST") && (
-                    <Button
-                      onClick={() => void directPost(selectedPayment)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
-                    >
-                      <Zap className="h-3.5 w-3.5" />
-                      Post Now to GL
-                    </Button>
-                  )}
-                  {selectedPayment.status === "DRAFT" && can("PAYMENT_CREATE") && (
-                    <Button variant="outline" onClick={() => void act(selectedPayment, "submit")}>
-                      Submit for Approval
-                    </Button>
-                  )}
-                  {selectedPayment.status === "SUBMITTED" && can("PAYMENT_APPROVE") && (
-                    <Button onClick={() => void act(selectedPayment, "approve")}>
-                      Approve Voucher
-                    </Button>
-                  )}
-                  {selectedPayment.status === "APPROVED" && can("PAYMENT_POST") && (
-                    <Button onClick={() => void act(selectedPayment, "post")}>
-                      Post Settlement to GL
-                    </Button>
+                  {(selectedPayment.status === "DRAFT" || selectedPayment.status === "SUBMITTED" || selectedPayment.status === "APPROVED") && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const p = selectedPayment;
+                          setSelectedPayment(null);
+                          void startEdit(p);
+                        }}
+                        className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Edit Voucher
+                      </Button>
+                      <Button
+                        onClick={() => void directPost(selectedPayment)}
+                        disabled={actingId === selectedPayment.id || deletingId === selectedPayment.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      >
+                        {actingId === selectedPayment.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5" />
+                        )}
+                        Post Now to GL
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => void handleDeletePayment(selectedPayment)}
+                        disabled={actingId === selectedPayment.id || deletingId === selectedPayment.id}
+                        className="text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700 gap-1.5"
+                      >
+                        {deletingId === selectedPayment.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete Voucher
+                      </Button>
+                    </>
                   )}
                 </div>
               </>

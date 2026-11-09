@@ -10,11 +10,12 @@ import {
   submitPayment,
 } from "@/lib/operations/payments";
 import { paymentDraftSchema } from "@/lib/operations/validation";
-import { prisma } from "@/lib/prisma";
+import { ensureSingleUserDatabase, prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 
 export async function GET(request: Request) {
   try {
+    await ensureSingleUserDatabase();
     const context = await requirePermission("PAYMENT_VIEW");
     const { page, pageSize, skip, params } = parsePagination(request.url);
     const allowedBranches = permittedBranchIds(context, "PAYMENT_VIEW");
