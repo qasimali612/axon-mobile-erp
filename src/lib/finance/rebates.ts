@@ -8,6 +8,7 @@ import { resolveSettlement } from "@/lib/finance/settlement";
 import { postSystemJournal } from "@/lib/finance/system-journal";
 import { assertMakerChecker } from "@/lib/operating-mode";
 import { prisma } from "@/lib/prisma";
+import type { RebateItem } from "@/lib/finance/rebate-validation";
 
 export type RebateActor = { companyId: string; userId: string; currencyCode: string };
 
@@ -19,7 +20,7 @@ export type RebateProgramInput = {
   customerId?: string | null;
   effectiveFrom: string;
   effectiveTo: string;
-  calculationMethod: "PERCENT_OF_VALUE" | "PER_UNIT" | "FIXED_AMOUNT";
+  calculationMethod: "PERCENT_OF_VALUE" | "PER_UNIT" | "FIXED_AMOUNT" | "PRICE_PROTECTION";
   rate?: string | null;
   fixedAmount?: string | null;
   primaryAccountId: string;
@@ -122,7 +123,7 @@ async function collectEligibility(program: { companyId: string; direction: Rebat
   return { value, quantity, documents: invoices.length + returns.length };
 }
 
-export async function calculateRebate(actor: RebateActor, programId: string, input: { periodStart: string; periodEnd: string }) {
+export async function calculateRebate(actor: RebateActor, programId: string, input: { periodStart: string; periodEnd: string; items?: RebateItem[] }) {
   const periodStart = toDate(input.periodStart);
   const periodEnd = toDate(input.periodEnd);
   const program = await prisma.rebateProgram.findFirst({ where: { id: programId, companyId: actor.companyId } });
@@ -131,19 +132,61 @@ export async function calculateRebate(actor: RebateActor, programId: string, inp
   if (periodStart < program.effectiveFrom || periodEnd > program.effectiveTo) {
     throw new ApiError(422, "PERIOD_OUTSIDE_PROGRAM", `The calculation period must fall inside the program's effective dates (${isoDate(program.effectiveFrom)} → ${isoDate(program.effectiveTo)}).`);
   }
-  const reference = `RB-${program.code}-${isoDate(periodEnd)}`.slice(0, 60);
+  const prefix = program.calculationMethod === "PRICE_PROTECTION" ? "RP" : "RB";
+  const reference = `${prefix}-${program.code}-${isoDate(periodEnd)}`.slice(0, 60);
   const existing = await prisma.rebateCalculation.findFirst({ where: { companyId: actor.companyId, programId: program.id, periodStart, periodEnd }, select: { id: true } });
   if (existing) throw new ApiError(409, "DUPLICATE_REBATE_CALCULATION", "This program already has a calculation for the period.");
 
-  // Heavy eligibility reads run outside the write transaction so the single pooled connection is
-  // never held while scanning posted documents.
-  const eligibility = await collectEligibility(program, periodStart, periodEnd);
-  if (eligibility.value.lte(0)) throw new ApiError(422, "NO_ELIGIBLE_DOCUMENTS", "No posted documents in the period qualify for this rebate.");
-  let calculated = zero();
-  if (program.calculationMethod === "PERCENT_OF_VALUE") calculated = eligibility.value.mul(program.rate ?? zero()).div(100);
-  else if (program.calculationMethod === "PER_UNIT") calculated = eligibility.quantity.mul(program.fixedAmount ?? zero());
-  else calculated = program.fixedAmount ?? zero();
-  const calculatedAmount = calculated.toDecimalPlaces(4);
+  let eligibleQuantity = zero();
+  let eligibleValue = zero();
+  let calculatedAmount = zero();
+  let calculationDetails: Prisma.InputJsonValue;
+
+  if (program.calculationMethod === "PRICE_PROTECTION") {
+    if (!input.items || input.items.length === 0) {
+      throw new ApiError(422, "ITEMS_REQUIRED", "Rate protection requires at least one product with eligible inventory and price drop.");
+    }
+    for (const item of input.items) {
+      const qty = decimal(String(item.eligibleQuantity));
+      const oldP = decimal(String(item.oldPrice));
+      const claim = decimal(String(item.claimAmount));
+      eligibleQuantity = eligibleQuantity.plus(qty);
+      eligibleValue = eligibleValue.plus(qty.mul(oldP));
+      calculatedAmount = calculatedAmount.plus(claim);
+    }
+    calculatedAmount = calculatedAmount.toDecimalPlaces(4);
+    if (calculatedAmount.lte(0)) {
+      throw new ApiError(422, "INVALID_CLAIM_AMOUNT", "The calculated rate protection claim amount must be greater than zero.");
+    }
+    calculationDetails = {
+      calculationMethod: "PRICE_PROTECTION",
+      items: input.items,
+      totalItems: input.items.length,
+      eligibleValue: eligibleValue.toDecimalPlaces(4).toString(),
+      eligibleQuantity: eligibleQuantity.toDecimalPlaces(4).toString(),
+      calculatedAmount: calculatedAmount.toString(),
+    };
+  } else {
+    // Heavy eligibility reads run outside the write transaction so the single pooled connection is
+    // never held while scanning posted documents.
+    const eligibility = await collectEligibility(program, periodStart, periodEnd);
+    if (eligibility.value.lte(0)) throw new ApiError(422, "NO_ELIGIBLE_DOCUMENTS", "No posted documents in the period qualify for this rebate.");
+    let calculated = zero();
+    if (program.calculationMethod === "PERCENT_OF_VALUE") calculated = eligibility.value.mul(program.rate ?? zero()).div(100);
+    else if (program.calculationMethod === "PER_UNIT") calculated = eligibility.quantity.mul(program.fixedAmount ?? zero());
+    else calculated = program.fixedAmount ?? zero();
+    calculatedAmount = calculated.toDecimalPlaces(4);
+    eligibleQuantity = eligibility.quantity.toDecimalPlaces(4);
+    eligibleValue = eligibility.value.toDecimalPlaces(4);
+    calculationDetails = {
+      calculationMethod: program.calculationMethod,
+      rate: program.rate?.toString() ?? null,
+      fixedAmount: program.fixedAmount?.toString() ?? null,
+      documents: eligibility.documents,
+      eligibleValue: eligibility.value.toDecimalPlaces(4).toString(),
+      eligibleQuantity: eligibility.quantity.toDecimalPlaces(4).toString(),
+    };
+  }
 
   return prisma.$transaction(async (tx) => {
     const created = await tx.rebateCalculation.create({
@@ -155,25 +198,18 @@ export async function calculateRebate(actor: RebateActor, programId: string, inp
         referenceNumber: reference,
         periodStart,
         periodEnd,
-        eligibleQuantity: eligibility.quantity.toDecimalPlaces(4),
-        eligibleValue: eligibility.value.toDecimalPlaces(4),
+        eligibleQuantity,
+        eligibleValue,
         calculatedAmount,
         approvedAmount: zero(),
         settledAmount: zero(),
         outstandingAmount: zero(),
         status: RebateStatus.CALCULATED,
-        calculationDetails: {
-          calculationMethod: program.calculationMethod,
-          rate: program.rate?.toString() ?? null,
-          fixedAmount: program.fixedAmount?.toString() ?? null,
-          documents: eligibility.documents,
-          eligibleValue: eligibility.value.toDecimalPlaces(4).toString(),
-          eligibleQuantity: eligibility.quantity.toDecimalPlaces(4).toString(),
-        } satisfies Prisma.InputJsonValue,
+        calculationDetails,
         calculatedById: actor.userId,
       },
     });
-    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, action: "REBATE_CALCULATED", module: "finance", entityType: "RebateCalculation", entityId: created.id, entityReference: reference, newValues: { eligibleValue: eligibility.value.toDecimalPlaces(4).toString(), calculatedAmount: calculatedAmount.toFixed(4), documents: eligibility.documents } }, tx);
+    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, action: "REBATE_CALCULATED", module: "finance", entityType: "RebateCalculation", entityId: created.id, entityReference: reference, newValues: { eligibleValue: eligibleValue.toDecimalPlaces(4).toString(), calculatedAmount: calculatedAmount.toFixed(4) } }, tx);
     return created;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
 }

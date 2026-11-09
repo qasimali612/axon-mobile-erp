@@ -8,7 +8,7 @@ const dateOnly = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Use the YYYY-MM
 const amount = z.union([z.string(), z.number()]).transform((value) => String(value).trim()).refine((value) => /^\d{1,15}(\.\d{1,4})?$/.test(value), "Use a non-negative number with at most four decimals.");
 const percent = z.string().trim().regex(/^\d{1,3}(\.\d{1,6})?$/, "Use a percentage with at most six decimals.").refine((value) => Number(value) > 0 && Number(value) <= 100, "Use a percentage above zero and at most 100.");
 
-export const REBATE_METHODS = ["PERCENT_OF_VALUE", "PER_UNIT", "FIXED_AMOUNT"] as const;
+export const REBATE_METHODS = ["PERCENT_OF_VALUE", "PER_UNIT", "FIXED_AMOUNT", "PRICE_PROTECTION"] as const;
 export const REBATE_TREATMENTS = ["INCOME", "COST_REDUCTION"] as const;
 
 export const rebateProgramSchema = z.object({
@@ -38,13 +38,30 @@ export const rebateProgramSchema = z.object({
     if (value.accountingTreatment !== "COST_REDUCTION") context.addIssue({ code: "custom", path: ["accountingTreatment"], message: "A customer rebate reduces sales value." });
   }
   if (value.calculationMethod === "PERCENT_OF_VALUE" && !value.rate) context.addIssue({ code: "custom", path: ["rate"], message: "A percentage of value requires a rate." });
-  if (value.calculationMethod !== "PERCENT_OF_VALUE" && !value.fixedAmount) context.addIssue({ code: "custom", path: ["fixedAmount"], message: "This calculation method requires an amount." });
+  if (value.calculationMethod !== "PERCENT_OF_VALUE" && value.calculationMethod !== "PRICE_PROTECTION" && !value.fixedAmount) context.addIssue({ code: "custom", path: ["fixedAmount"], message: "This calculation method requires an amount." });
   if (value.primaryAccountId === value.settlementAccountId) context.addIssue({ code: "custom", path: ["settlementAccountId"], message: "The settlement account must differ from the primary account." });
 });
+
+export const rebateItemSchema = z.object({
+  productId: z.string().uuid(),
+  variantId: z.string().uuid(),
+  productName: z.string().min(1),
+  variantName: z.string().min(1),
+  sku: z.string().min(1),
+  currentStock: z.number().nonnegative(),
+  eligibleQuantity: z.number().positive(),
+  oldPrice: z.number().positive(),
+  newPrice: z.number().positive(),
+  priceDropPerUnit: z.number().positive(),
+  claimAmount: z.number().positive(),
+});
+
+export type RebateItem = z.infer<typeof rebateItemSchema>;
 
 export const rebateCalculationSchema = z.object({
   periodStart: dateOnly,
   periodEnd: dateOnly,
+  items: z.array(rebateItemSchema).optional(),
 }).superRefine((value, context) => {
   if (value.periodEnd < value.periodStart) context.addIssue({ code: "custom", path: ["periodEnd"], message: "The period end cannot precede the period start." });
 });

@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const context = await requirePermission("REBATE_VIEW");
     const companyId = context.company.id;
-    const [programs, calculations, suppliers, customers, accounts, methods, bankAccounts] = await Promise.all([
+    const [programs, calculations, suppliers, customers, accounts, methods, bankAccounts, variants] = await Promise.all([
       prisma.rebateProgram.findMany({
         where: { companyId },
         include: { supplier: { select: { code: true, name: true } }, customer: { select: { code: true, name: true } }, primaryAccount: { select: { code: true, name: true } }, settlementAccount: { select: { code: true, name: true } }, _count: { select: { calculations: true } } },
@@ -33,7 +33,31 @@ export async function GET() {
       prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true, accountClass: true }, orderBy: { code: "asc" } }),
       prisma.paymentMethod.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true, methodType: true, bankAccountId: true, requiresReference: true }, orderBy: { sequence: "asc" } }),
       prisma.bankAccount.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, bankName: true }, orderBy: { code: "asc" } }),
+      prisma.productVariant.findMany({
+        where: { companyId, isActive: true },
+        select: {
+          id: true,
+          productId: true,
+          sku: true,
+          name: true,
+          purchasePrice: true,
+          product: { select: { id: true, name: true, brand: { select: { name: true } } } },
+          stockBalances: { select: { quantity: true } },
+        },
+        orderBy: { name: "asc" },
+        take: 1000,
+      }),
     ]);
-    return NextResponse.json(jsonSafe({ data: { programs, calculations }, lookups: { suppliers, customers, accounts, paymentMethods: methods, bankAccounts } }));
+    const products = variants.map((v) => ({
+      variantId: v.id,
+      productId: v.productId,
+      productName: v.product?.name ?? v.name,
+      variantName: v.name,
+      brandName: v.product?.brand?.name ?? "",
+      sku: v.sku,
+      purchasePrice: Number(v.purchasePrice),
+      currentStock: Math.max(0, v.stockBalances.reduce((sum, b) => sum + Number(b.quantity), 0)),
+    }));
+    return NextResponse.json(jsonSafe({ data: { programs, calculations }, lookups: { suppliers, customers, accounts, paymentMethods: methods, bankAccounts, products } }));
   } catch (error) { return apiError(error); }
 }
