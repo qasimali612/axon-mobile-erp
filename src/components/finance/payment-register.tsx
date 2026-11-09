@@ -841,19 +841,37 @@ export function PaymentRegister({
           <span className="mt-1 block text-[11px] text-blue-600">Posted disbursements</span>
         </div>
 
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 shadow-sm">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-              Pending Approvals / Posts
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+              Unposted Vouchers
             </span>
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-100 text-amber-700">
-              <BadgeCheck className="h-4 w-4" />
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-200/80 text-amber-800">
+              <Zap className="h-4 w-4" />
             </span>
           </div>
-          <p className="mt-2 text-2xl font-black tabular-nums text-amber-950">
-            {metrics.pendingCount}
-          </p>
-          <span className="mt-1 block text-[11px] text-amber-600">Awaiting supervisor review</span>
+          <div className="mt-2 flex items-baseline justify-between">
+            <p className="text-2xl font-black tabular-nums text-amber-950">
+              {metrics.pendingCount}
+            </p>
+            {metrics.pendingCount > 0 && (
+              <Button
+                size="sm"
+                disabled={batchPosting}
+                onClick={() => void handleBatchAutoPost()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 gap-1.5 shadow-xs px-3"
+                title="Post all pending vouchers directly to General Ledger"
+              >
+                {batchPosting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-200" />
+                )}
+                Post All ({metrics.pendingCount})
+              </Button>
+            )}
+          </div>
+          <span className="mt-1 block text-[11px] text-amber-700">Ready to commit directly to General Ledger</span>
         </div>
       </section>
 
@@ -1043,68 +1061,37 @@ export function PaymentRegister({
                           View
                         </Button>
 
-                        {/* Edit Draft / Submitted Payment */}
-                        {(row.status === "DRAFT" || row.status === "SUBMITTED") && can("PAYMENT_CREATE") ? (
+                        {/* Edit Unposted Payment */}
+                        {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && (
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => void startEdit(row)}
-                            className="px-2 text-slate-700 hover:text-blue-700 hover:border-blue-300 gap-1"
-                            title="Edit this payment draft"
+                            className="px-2 text-slate-700 hover:text-blue-700 hover:border-blue-300 gap-1 h-8 text-xs font-semibold"
+                            title="Edit this payment voucher"
                           >
                             <Edit3 className="h-3.5 w-3.5 text-blue-600" />
                             Edit
                           </Button>
-                        ) : null}
+                        )}
 
-                        {/* Fast-Track Direct Post for Authorized Cashier / Manager */}
-                        {(row.status === "DRAFT" || row.status === "SUBMITTED") && can("PAYMENT_POST") ? (
+                        {/* 1-Click Direct Post to General Ledger */}
+                        {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && (
                           <Button
                             size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2 text-[11px]"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2.5 text-xs font-bold shadow-xs h-8"
                             disabled={actingId === row.id}
                             onClick={() => void directPost(row)}
-                            title="Direct Post: submit, approve & post voucher to GL"
+                            title="Post voucher directly to General Ledger"
                           >
-                            <Zap className="h-3 w-3" />
+                            {actingId === row.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-200" />
+                            )}
                             Post Now
                           </Button>
-                        ) : null}
-
-                        {/* Workflow Actions */}
-                        {row.status === "DRAFT" && row.preparedBy.fullName && can("PAYMENT_CREATE") ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={actingId === row.id}
-                            onClick={() => void act(row, "submit")}
-                          >
-                            Submit
-                          </Button>
-                        ) : null}
-
-                        {row.status === "SUBMITTED" && can("PAYMENT_APPROVE") ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={actingId === row.id}
-                            onClick={() => void act(row, "approve")}
-                          >
-                            <BadgeCheck className="h-3.5 w-3.5 text-blue-600" />
-                            Approve
-                          </Button>
-                        ) : null}
-
-                        {row.status === "APPROVED" && can("PAYMENT_POST") ? (
-                          <Button
-                            size="sm"
-                            disabled={actingId === row.id}
-                            onClick={() => void act(row, "post")}
-                          >
-                            <Banknote className="h-3.5 w-3.5" />
-                            Post
-                          </Button>
-                        ) : null}
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1477,50 +1464,60 @@ export function PaymentRegister({
             </div>
 
             {/* Direction Selector Tabs */}
-            <div className="border-b border-slate-200 bg-slate-50/90 px-6 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-xl bg-slate-200/70 p-1 text-xs font-semibold text-slate-700">
-                  {[
-                    { key: "CUSTOMER_RECEIPT", label: "Customer Receipt", icon: ArrowDownLeft, activeTone: "bg-white text-emerald-800 shadow-xs font-bold" },
-                    { key: "SUPPLIER_PAYMENT", label: "Supplier Payment", icon: ArrowUpRight, activeTone: "bg-white text-blue-800 shadow-xs font-bold" },
-                    { key: "CUSTOMER_REFUND", label: "Customer Refund", icon: RotateCcw, activeTone: "bg-white text-amber-800 shadow-xs font-bold" },
-                    { key: "SUPPLIER_REFUND", label: "Supplier Refund", icon: CornerDownLeft, activeTone: "bg-white text-purple-800 shadow-xs font-bold" },
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    const isSelected = direction === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => {
-                          setDirection(item.key);
-                          setPartyId("");
-                          setPartySearch("");
-                          setTargetId("");
-                          setAllocationAmount("");
-                          setDocAllocations({});
-                        }}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
-                          isSelected
-                            ? item.activeTone
-                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
-                        }`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="border-b border-slate-200 bg-slate-50 px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-blue-100 text-blue-800"
-                  }`}>
-                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                    {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND" ? "Asset Inflow · DR Cash/Bank" : "Asset Outflow · CR Cash/Bank"}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDirection("CUSTOMER_RECEIPT");
+                      setPartyId("");
+                      setPartySearch("");
+                      setTargetId("");
+                      setAllocationAmount("");
+                      setDocAllocations({});
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-xs ${
+                      direction === "CUSTOMER_RECEIPT"
+                        ? "bg-emerald-600 text-white shadow-emerald-600/20"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <ArrowDownLeft className="h-4 w-4" />
+                    Receive Payment (Customer)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDirection("SUPPLIER_PAYMENT");
+                      setPartyId("");
+                      setPartySearch("");
+                      setTargetId("");
+                      setAllocationAmount("");
+                      setDocAllocations({});
+                    }}
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-xs ${
+                      direction === "SUPPLIER_PAYMENT"
+                        ? "bg-blue-600 text-white shadow-blue-600/20"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <ArrowUpRight className="h-4 w-4" />
+                    Make Payment (Supplier)
+                  </button>
+                </div>
+                {/* Secondary refund toggle */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span>Refund?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDirection(isCustomer ? "CUSTOMER_REFUND" : "SUPPLIER_REFUND");
+                    }}
+                    className="text-blue-600 hover:underline font-semibold"
+                  >
+                    Switch to {isCustomer ? "Customer Refund" : "Supplier Refund"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1530,9 +1527,10 @@ export function PaymentRegister({
               <div className="grid gap-6 p-6 lg:grid-cols-2">
                 {/* Column 1: Operating Details & Counterparty */}
                 <div className="space-y-4">
+                  {/* Branch & Date */}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
-                      Operating Branch *
+                      Branch *
                       <select
                         required
                         className="field-input mt-1"
@@ -1549,28 +1547,14 @@ export function PaymentRegister({
 
                     <div>
                       <div className="flex items-center justify-between">
-                        <label className="field-label mb-0">Voucher Date *</label>
-                        <div className="flex gap-1 text-[10px]">
-                          <button
-                            type="button"
-                            onClick={() => setDate(new Date().toISOString().slice(0, 10))}
-                            className="text-blue-600 hover:underline"
-                          >
-                            Today
-                          </button>
-                          <span>·</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const d = new Date();
-                              d.setDate(d.getDate() - 1);
-                              setDate(d.toISOString().slice(0, 10));
-                            }}
-                            className="text-slate-500 hover:underline"
-                          >
-                            Yesterday
-                          </button>
-                        </div>
+                        <label className="field-label mb-0">Payment Date *</label>
+                        <button
+                          type="button"
+                          onClick={() => setDate(new Date().toISOString().slice(0, 10))}
+                          className="text-[10px] text-blue-600 hover:underline font-bold"
+                        >
+                          Today
+                        </button>
                       </div>
                       <input
                         required
@@ -1585,14 +1569,14 @@ export function PaymentRegister({
                   {/* Counterparty Selection */}
                   <div>
                     <label className="field-label">
-                      {isCustomer ? "Customer / Dealer (AR)" : "Vendor / Supplier (AP)"} *
+                      {isCustomer ? "Select Customer" : "Select Supplier / Vendor"} *
                       <div className="relative mt-1">
                         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                         <input
                           type="text"
                           value={partySearch}
                           onChange={(e) => setPartySearch(e.target.value)}
-                          placeholder={`Filter ${isCustomer ? "customers" : "suppliers"} by name or code...`}
+                          placeholder={`Search ${isCustomer ? "customers" : "suppliers"} by name, phone, or code...`}
                           className="h-8 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-xs outline-none focus:border-blue-500"
                         />
                       </div>
@@ -1607,7 +1591,7 @@ export function PaymentRegister({
                           setDocAllocations({});
                         }}
                       >
-                        <option value="">Select {isCustomer ? "customer" : "supplier"}...</option>
+                        <option value="">Choose {isCustomer ? "Customer" : "Supplier"}...</option>
                         {filteredPartyList.map((item: any) => (
                           <option key={item.id} value={item.id}>
                             {item.code} · {item.name} {item.phone ? `(${item.phone})` : ""}
@@ -1616,102 +1600,72 @@ export function PaymentRegister({
                       </select>
                     </label>
 
-                    {/* Counterparty Financial Dossier Card */}
                     {selectedParty && (
-                      <div className="mt-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-3.5 text-xs text-blue-950 shadow-xs">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <span className="font-bold text-sm block text-slate-900">{selectedParty.name}</span>
-                            <span className="block text-[11px] text-blue-700 font-mono mt-0.5">
-                              Code: <b>{selectedParty.code}</b>
-                              {selectedParty.phone ? ` · Ph: ${selectedParty.phone}` : ""}
-                              {selectedParty.paymentTermsDays
-                                ? ` · Terms: ${selectedParty.paymentTermsDays} days`
-                                : " · Terms: Due on Receipt"}
-                            </span>
-                          </div>
-                          <Link
-                            href={`/finance/subledgers/${isCustomer ? "customer" : "supplier"}/${selectedParty.id}/print`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-blue-700 shadow-xs border border-blue-200 hover:bg-blue-100"
-                            title="Print Subledger Statement"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            Statement
-                          </Link>
+                      <div className="mt-2 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/70 px-3.5 py-2.5 text-xs text-blue-950">
+                        <div>
+                          <span className="font-bold text-slate-900 block">{selectedParty.name}</span>
+                          <span className="text-[11px] text-slate-500">
+                            {selectedParty.code} {selectedParty.phone ? `· ${selectedParty.phone}` : ""}
+                          </span>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-blue-200/60 pt-2 text-[11px]">
-                          <div>
-                            <span className="text-slate-500 block">Credit Limit:</span>
-                            <span className="font-bold text-blue-950 font-mono">
-                              {selectedParty.creditLimit
-                                ? formatMoney(selectedParty.creditLimit, currency)
-                                : "Not Set (Unlimited)"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block">Open Pending Docs:</span>
-                            <span className="font-bold text-blue-950 font-mono">
-                              {targets.length} {isCustomer ? "sales invoice(s)" : "bill(s)"}
-                            </span>
-                          </div>
-                        </div>
+                        {targets.length > 0 ? (
+                          <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800">
+                            {targets.length} Unpaid {isCustomer ? "Invoices" : "Bills"}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-500 font-medium">On-account advance</span>
+                        )}
                       </div>
                     )}
                   </div>
 
-                  {/* Payment Instrument & Settlement Source */}
-                  <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-4">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2.5">
-                      Settlement Method & Account *
+                  {/* Payment Mode (Cash vs Bank) */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 block mb-2">
+                      Payment Mode *
                     </span>
-
-                    {/* Method Selector Tabs */}
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      {[
-                        { id: "CASH", label: "Cash Drawer", icon: Banknote, filter: "CASH" },
-                        { id: "BANK_TRANSFER", label: "Bank Account", icon: Landmark, filter: "BANK" },
-                        { id: "CHEQUE", label: "Cheque / Draft", icon: CreditCard, filter: "BANK" },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        const isSelected = paymentInstrument === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => {
-                              setPaymentInstrument(item.id as any);
-                              setSettlementFilter(item.filter as any);
-                              if (item.filter === "CASH") {
-                                const cashAcc = accounts.find((a) => a.type === "cash");
-                                if (cashAcc) setAccountChoice(cashAcc.value);
-                              } else {
-                                const bankAcc = accounts.find((a) => a.type === "bank");
-                                if (bankAcc) setAccountChoice(bankAcc.value);
-                              }
-                            }}
-                            className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 px-3 text-xs font-bold transition ${
-                              isSelected
-                                ? "border-blue-600 bg-blue-50/80 text-blue-900 shadow-xs ring-1 ring-blue-500"
-                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100/70"
-                            }`}
-                          >
-                            <Icon className="h-4 w-4" />
-                            <span>{item.label}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentInstrument("CASH");
+                          setSettlementFilter("CASH");
+                          const cashAcc = accounts.find((a) => a.type === "cash");
+                          if (cashAcc) setAccountChoice(cashAcc.value);
+                        }}
+                        className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition border ${
+                          paymentInstrument === "CASH"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/30"
+                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Banknote className="h-4 w-4 text-emerald-600" />
+                        Cash Drawer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentInstrument("BANK_TRANSFER");
+                          setSettlementFilter("BANK");
+                          const bankAcc = accounts.find((a) => a.type === "bank");
+                          if (bankAcc) setAccountChoice(bankAcc.value);
+                        }}
+                        className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition border ${
+                          paymentInstrument !== "CASH"
+                            ? "border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-500/30"
+                            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Building2 className="h-4 w-4 text-blue-600" />
+                        Bank Account
+                      </button>
                     </div>
 
-                    {/* Account Picker */}
-                    <div>
-                      <label className="field-label mb-1">
-                        {paymentInstrument === "CASH" ? "Cash Drawer Account *" : "Bank GL Account *"}
-                      </label>
+                    <label className="field-label mb-1">
+                      {paymentInstrument === "CASH" ? "Cash Account *" : "Bank Account *"}
                       <select
                         required
-                        className="field-input font-mono font-medium"
+                        className="field-input mt-1 font-mono font-medium"
                         value={accountChoice}
                         onChange={(e) => setAccountChoice(e.target.value)}
                       >
@@ -1722,98 +1676,20 @@ export function PaymentRegister({
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </label>
 
-                    {/* Conditional Cheque Details */}
-                    {paymentInstrument === "CHEQUE" && (
-                      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3 rounded-lg bg-amber-50/70 border border-amber-200/80 p-2.5">
-                        <div>
-                          <label className="block text-[11px] font-bold text-amber-950">Cheque / Draft # *</label>
+                    {paymentInstrument !== "CASH" && (
+                      <div className="mt-2.5">
+                        <label className="field-label">
+                          Reference / Cheque #
                           <input
                             type="text"
-                            placeholder="e.g. CHQ-994821"
-                            value={chequeNumber}
-                            onChange={(e) => setChequeNumber(e.target.value)}
-                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs font-mono font-bold text-slate-900 focus:outline-none"
+                            placeholder="Cheque #, Online transfer slip, or Ref ID"
+                            value={reference}
+                            onChange={(e) => setReference(e.target.value)}
+                            className="field-input mt-1"
                           />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-amber-950">Cheque Date *</label>
-                          <input
-                            type="date"
-                            value={chequeDate || date}
-                            onChange={(e) => setChequeDate(e.target.value)}
-                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-amber-950">Drawn On Bank</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Meezan, HBL"
-                            value={chequeBank}
-                            onChange={(e) => setChequeBank(e.target.value)}
-                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Cash Counter Calculator */}
-                    {accountChoice.startsWith("cash") && (
-                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 shadow-xs">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                            <Banknote className="h-3.5 w-3.5" /> Cash Drawer Tender Calculator
-                          </span>
-                          <span className="text-[10px] text-emerald-600 font-mono">Counter Change Helper</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
-                          <div>
-                            <label className="block text-[10px] font-semibold text-emerald-900 mb-0.5">
-                              Cash Received / Tendered ({currency}):
-                            </label>
-                            <input
-                              type="number"
-                              step="1"
-                              placeholder="0.00"
-                              value={cashTendered}
-                              onChange={(e) => setCashTendered(e.target.value)}
-                              className="h-8 w-full rounded-lg border border-emerald-300 bg-white px-2.5 text-xs font-mono font-bold text-emerald-950 focus:outline-none"
-                            />
-                            {/* Quick note buttons */}
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setCashTendered(amount)}
-                                className="rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
-                              >
-                                Exact
-                              </button>
-                              {[500, 1000, 5000].map((val) => (
-                                <button
-                                  key={val}
-                                  type="button"
-                                  onClick={() =>
-                                    setCashTendered(String((parseFloat(cashTendered) || 0) + val))
-                                  }
-                                  className="rounded bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 border border-emerald-200 hover:bg-emerald-100"
-                                >
-                                  +{val}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="rounded-lg bg-emerald-100/80 p-2.5 text-right border border-emerald-200">
-                            <span className="block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">
-                              Change To Return
-                            </span>
-                            <span className="font-mono font-black text-base text-emerald-950">
-                              {formatMoney(changeToReturn, currency)}
-                            </span>
-                          </div>
-                        </div>
+                        </label>
                       </div>
                     )}
                   </div>
@@ -1821,255 +1697,114 @@ export function PaymentRegister({
 
                 {/* Column 2: Amount, Matching & Remarks */}
                 <div className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="field-label">
-                      Payment Amount ({currency}) *
-                      <div className="relative mt-1">
-                        <span className="pointer-events-none absolute left-3 top-2 text-xs font-bold text-slate-400">
-                          {currency}
-                        </span>
-                        <input
-                          required
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="0.00"
-                          className="h-10 w-full rounded-lg border border-slate-200 pl-12 pr-3 text-base font-mono font-bold text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                        />
-                      </div>
-                    </label>
-
-                    <label className="field-label">
-                      Reference / Instrument #
-                      <input
-                        className="field-input mt-1"
-                        value={reference}
-                        onChange={(e) => setReference(e.target.value)}
-                        placeholder={
-                          accountChoice.startsWith("bank")
-                            ? "Cheque #, Online transfer ID, or slip #"
-                            : "Cash memo ref or counter slip #"
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  {/* Multi-Document Allocation Engine */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-xs">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <FileText className="h-4 w-4 text-slate-700" />
-                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                          Invoice / Bill Matching Engine
-                        </span>
-                        {targets.length > 0 && (
-                          <Badge tone="blue">{targets.length} open</Badge>
-                        )}
-                      </div>
-
-                      {/* Engine Toolbar */}
-                      {targets.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={handleAutoAllocateFIFO}
-                            className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-blue-700 shadow-xs"
-                            title="Automatically distribute entered amount across open documents chronologically"
-                          >
-                            <Zap className="h-3 w-3" />
-                            ⚡ Auto-Allocate FIFO
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleMatchAllDocs}
-                            className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            Match All
-                          </button>
-                          {(Object.keys(docAllocations).length > 0 || targetId) && (
-                            <button
-                              type="button"
-                              onClick={handleClearAllocations}
-                              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-rose-600 hover:underline"
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {targets.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-[11px] text-slate-500">
-                          Allocate payment against posted documents to knock off subledger balances:
-                        </p>
-                        <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b sticky top-0">
-                              <tr>
-                                <th className="px-3 py-1.5">Document #</th>
-                                <th className="px-2 py-1.5">Date</th>
-                                <th className="px-2 py-1.5 text-right">Total Due</th>
-                                <th className="px-2 py-1.5 text-right w-28">Allocated</th>
-                                <th className="px-3 py-1.5 text-right">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-mono text-xs">
-                              {targets.map((item: any) => {
-                                const currentAlloc = docAllocations[item.id] || (targetId === item.id ? allocationAmount : "");
-                                const isMatched = (parseFloat(currentAlloc) || 0) > 0;
-                                const docNum = item.invoiceNumber || item.receiptNumber;
-                                const docDate = item.invoiceDate || item.receiptDate;
-                                const grandTotalStr = String(item.grandTotal);
-
-                                return (
-                                  <tr
-                                    key={item.id}
-                                    className={`hover:bg-slate-50 ${isMatched ? "bg-blue-50/60 font-semibold" : ""}`}
-                                  >
-                                    <td className="px-3 py-2 text-slate-900 font-sans">{docNum}</td>
-                                    <td className="px-2 py-2 text-slate-500">{formatDate(docDate)}</td>
-                                    <td className="px-2 py-2 text-right text-slate-800">
-                                      {formatMoney(item.grandTotal, currency)}
-                                    </td>
-                                    <td className="px-2 py-1 text-right">
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max={item.grandTotal}
-                                        value={currentAlloc}
-                                        placeholder="0.00"
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setDocAllocations((prev) => ({
-                                            ...prev,
-                                            [item.id]: val,
-                                          }));
-                                        }}
-                                        className="h-7 w-24 rounded border border-slate-200 px-1.5 text-right text-xs font-bold font-mono text-blue-950 focus:border-blue-500"
-                                      />
-                                    </td>
-                                    <td className="px-3 py-2 text-right">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (isMatched) {
-                                            setDocAllocations((prev) => {
-                                              const next = { ...prev };
-                                              delete next[item.id];
-                                              return next;
-                                            });
-                                          } else {
-                                            setDocAllocations((prev) => ({
-                                              ...prev,
-                                              [item.id]: grandTotalStr,
-                                            }));
-                                            if (!amount || Number(amount) <= 0) {
-                                              setAmount(grandTotalStr);
-                                            }
-                                          }
-                                        }}
-                                        className={`rounded px-2 py-0.5 text-[10px] font-sans font-bold transition ${
-                                          isMatched
-                                            ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
-                                            : "border border-slate-200 text-slate-600 hover:bg-slate-100"
-                                        }`}
-                                      >
-                                        {isMatched ? "Clear" : "Match Full"}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic">
-                        {partyId
-                          ? `No posted ${isCustomer ? "sales invoices" : "purchase bills"} pending settlement for this party. This voucher will be credited as an advance on account.`
-                          : "Select a party above to view their open invoices and bills."}
-                      </p>
-                    )}
-
-                    {/* Live Allocation Summary */}
-                    {amount && Number(amount) > 0 && (
-                      <div className="mt-3 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[11px]">
-                        <span className="text-slate-600">
-                          Total Matched: <b>{formatMoney(totalAllocated || allocationAmount || 0, currency)}</b>
-                        </span>
-                        <span className="text-slate-800 font-semibold">
-                          Advance on Ledger:{" "}
-                          <b className="text-blue-700">
-                            {formatMoney(advanceOnLedger, currency)}
-                          </b>
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Live Double-Entry Balancing Preview */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 shadow-xs">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
-                      <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-slate-500">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                        Live Double-Entry Balance Preview
-                      </span>
-                      <span className="text-emerald-700 font-semibold text-[11px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                        Balanced (Dr = Cr)
-                      </span>
-                    </div>
-
-                    <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white font-mono text-xs overflow-hidden">
-                      {/* Debit Line */}
-                      <div className="flex justify-between items-center px-3 py-2 hover:bg-slate-50">
-                        <span className="text-blue-900 font-semibold truncate max-w-[280px]">
-                          <span className="text-emerald-700 font-bold mr-1.5">Dr.</span>
-                          {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
-                            ? accounts.find((a) => a.value === accountChoice)?.label || "Settlement Account"
-                            : `2010 · Accounts Payable (${selectedParty?.name || "Supplier"})`}
-                        </span>
-                        <span className="font-bold text-slate-900">
-                          {formatMoney(amount || 0, currency)}
-                        </span>
-                      </div>
-
-                      {/* Credit Line */}
-                      <div className="flex justify-between items-center px-3 py-2 hover:bg-slate-50 pl-6">
-                        <span className="text-slate-700 font-semibold truncate max-w-[280px]">
-                          <span className="text-rose-700 font-bold mr-1.5">Cr.</span>
-                          {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
-                            ? `1020 · Accounts Receivable (${selectedParty?.name || "Customer"})`
-                            : accounts.find((a) => a.value === accountChoice)?.label || "Settlement Account"}
-                        </span>
-                        <span className="font-bold text-slate-900">
-                          {formatMoney(amount || 0, currency)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Remarks & Internal Narration */}
+                  {/* Amount */}
                   <label className="field-label">
-                    Notes & Remarks
+                    Payment Amount ({currency}) *
+                    <div className="relative mt-1">
+                      <span className="pointer-events-none absolute left-3.5 top-2.5 text-sm font-bold text-slate-400">
+                        {currency}
+                      </span>
+                      <input
+                        required
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="0.00"
+                        className="h-11 w-full rounded-xl border border-slate-300 pl-14 pr-4 text-lg font-mono font-black text-slate-950 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                      />
+                    </div>
+                  </label>
+
+                  {/* Open Invoices Settlement */}
+                  {targets.length > 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <FileText className="h-4 w-4 text-blue-600" />
+                          Unpaid {isCustomer ? "Invoices" : "Bills"} ({targets.length})
+                        </span>
+                        <span className="text-[11px] text-slate-500">Click &apos;Settle Full&apos; to auto-fill amount</span>
+                      </div>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {targets.map((item: any) => {
+                          const docNum = item.invoiceNumber || item.receiptNumber;
+                          const docDate = item.invoiceDate || item.receiptDate;
+                          const grandTotalStr = String(item.grandTotal);
+                          const currentAlloc = docAllocations[item.id] || (targetId === item.id ? allocationAmount : "");
+                          const isMatched = (parseFloat(currentAlloc) || 0) > 0;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className={`flex items-center justify-between rounded-xl border p-2.5 transition text-xs ${
+                                isMatched
+                                  ? "border-emerald-300 bg-emerald-50/80"
+                                  : "border-slate-200 bg-white hover:bg-slate-50"
+                              }`}
+                            >
+                              <div>
+                                <span className="font-bold text-slate-900 block font-sans">{docNum}</span>
+                                <span className="text-[11px] text-slate-500">{formatDate(docDate)}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono font-bold text-slate-900">
+                                  {formatMoney(item.grandTotal, currency)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isMatched) {
+                                      setDocAllocations((prev) => {
+                                        const next = { ...prev };
+                                        delete next[item.id];
+                                        return next;
+                                      });
+                                      if (amount === grandTotalStr) setAmount("");
+                                    } else {
+                                      setDocAllocations({ [item.id]: grandTotalStr });
+                                      setAmount(grandTotalStr);
+                                    }
+                                  }}
+                                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition shadow-xs ${
+                                    isMatched
+                                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                      : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                  }`}
+                                >
+                                  {isMatched ? "✓ Settled" : "⚡ Settle Full"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 text-xs text-slate-500">
+                      {partyId
+                        ? `No unpaid ${isCustomer ? "sales invoices" : "bills"} found for this party. Payment will be recorded directly as an advance on account.`
+                        : `Select a ${isCustomer ? "customer" : "supplier"} to link open documents.`}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  <label className="field-label">
+                    Notes / Remarks (Optional)
                     <textarea
                       rows={2}
-                      className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="field-input mt-1 text-xs"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Optional internal remarks, counter details, or authorization instructions..."
+                      placeholder="e.g. Counter checkout balance, advance receipt, cheque details..."
                     />
                   </label>
                 </div>
               </div>
 
               {/* Modal Footer Actions */}
-              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/90 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-[11px] text-slate-400">
                   © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
                 </span>
@@ -2089,27 +1824,31 @@ export function PaymentRegister({
                     variant="outline"
                     disabled={saving}
                     onClick={(e) => void handleCreate(e, false)}
-                    className="gap-1.5"
+                    className="text-xs font-semibold"
                   >
-                    <FilePlus2 className="h-4 w-4" />
                     {saving && !isPostingDirect
                       ? "Saving..."
                       : editingPaymentId
                       ? "Update Draft"
-                      : "Save as Draft"}
+                      : "Save Draft"}
                   </Button>
                   <Button
                     type="button"
                     disabled={saving}
                     onClick={(e) => void handleCreate(e, true)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm font-semibold"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5 shadow-sm px-4 h-10"
                   >
-                    <Zap className="h-4 w-4" />
-                    {saving && isPostingDirect
-                      ? "Posting to GL..."
-                      : editingPaymentId
-                      ? "⚡ Update & Post Voucher"
-                      : "⚡ Save & Post Voucher"}
+                    {saving && isPostingDirect ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Posting to GL...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4 fill-amber-300 text-amber-200" />
+                        {editingPaymentId ? "⚡ Update & Post to GL" : "⚡ Save & Post to GL"}
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
