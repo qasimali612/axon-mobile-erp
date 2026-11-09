@@ -452,7 +452,7 @@ export async function postSalesInvoice(actor: SalesActor, id: string) {
       if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
       if (invoice.status === OperationalDocumentStatus.POSTED) return invoice;
       if (invoice.status !== OperationalDocumentStatus.APPROVED || !invoice.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved invoice can be posted.");
-      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, invoice.preparedById, invoice.approvedById, "post this sales invoice");
+      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, invoice.preparedById, invoice.approvedById, "post this sales invoice", [], true);
       if (invoice.customer.status !== "ACTIVE") throw new ApiError(409, "CUSTOMER_INACTIVE", "The customer is no longer active.");
       await enableInventoryPosting(tx);
 
@@ -523,6 +523,7 @@ export async function postSalesInvoice(actor: SalesActor, id: string) {
         sourceDocumentNumber: invoice.invoiceNumber,
         idempotencyKey: `SALES-INVOICE:${invoice.id}`,
         narration: `Sales invoice ${invoice.invoiceNumber} for ${invoice.customer.name}`,
+        allowApproverPosting: true,
         lines: [
           { accountId: receivableAccount.id, description: `Customer receivable for ${invoice.invoiceNumber}`, debit: invoice.grandTotal, customerId: invoice.customerId, salespersonId: invoice.salespersonId, invoiceNumber: invoice.invoiceNumber, dueDate: invoice.dueDate },
           { accountId: revenueAccount.id, description: `Net sales on ${invoice.invoiceNumber}`, credit: netRevenue, customerId: invoice.customerId, salespersonId: invoice.salespersonId, invoiceNumber: invoice.invoiceNumber, dueDate: invoice.dueDate },

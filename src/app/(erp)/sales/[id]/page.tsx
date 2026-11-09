@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Banknote, Edit3, ExternalLink, FileText, Printer, Receipt, ShieldAlert } from "lucide-react";
 import { OperationalDocumentStatus, PaymentDirection, Prisma } from "@prisma/client";
 import { DocumentReversalAction } from "@/components/operations/document-reversal-action";
+import { SalesInvoiceWorkflowActions } from "@/components/sales/sales-invoice-actions";
 import { Badge } from "@/components/ui/badge";
 import { permittedDocumentScopes, requirePagePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -37,7 +38,7 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
     include: {
       branch: { select: { code: true, name: true } },
       warehouse: { select: { code: true, name: true } },
-      customer: { select: { code: true, name: true, phone: true, email: true } },
+      customer: { select: { id: true, code: true, name: true, phone: true, email: true, creditLimit: true } },
       salesperson: { select: { fullName: true } },
       preparedBy: { select: { id: true, fullName: true } },
       approvedBy: { select: { id: true, fullName: true } },
@@ -103,6 +104,25 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
     <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
       <div><Link href="/sales" className="inline-flex items-center gap-1 text-xs font-bold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>Sales register</Link><div className="mt-3 flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black text-slate-950 sm:text-[30px]">{invoice.invoiceNumber}</h1><Badge tone={statusTone(invoice.status)}>{titleCase(invoice.status)}</Badge>{invoice.reversalOfId && <Badge tone="red">Reversal document</Badge>}</div><p className="mt-1.5 text-sm text-slate-500">{invoice.customer.name} · {invoice.branch.name} / {invoice.warehouse.name} · {formatDate(invoice.invoiceDate)}</p></div>
       <div className="flex flex-wrap items-center gap-2">
+        <SalesInvoiceWorkflowActions
+          invoice={{
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            status: invoice.status,
+            grandTotal: invoice.grandTotal.toString(),
+            currencyCode: invoice.currencyCode,
+            preparedById: invoice.preparedById,
+            approvedById: invoice.approvedById,
+            customer: {
+              id: invoice.customer.id,
+              code: invoice.customer.code,
+              name: invoice.customer.name,
+              creditLimit: invoice.customer.creditLimit ? invoice.customer.creditLimit.toString() : undefined,
+            },
+          }}
+          userId={context.user.id}
+          permissions={context.permissions}
+        />
         {invoice.status !== OperationalDocumentStatus.POSTED && invoice.status !== OperationalDocumentStatus.REVERSED && invoice.status !== OperationalDocumentStatus.CANCELLED && (
           <Link
             href={`/sales/${invoice.id}/edit`}
