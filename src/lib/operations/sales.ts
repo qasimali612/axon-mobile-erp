@@ -12,7 +12,7 @@ import type { z } from "zod";
 import { ApiError } from "@/lib/api";
 import { appendAudit } from "@/lib/audit";
 import { assertApprovalPolicy, assertCreditOverrideAllowed, assertDiscountCap } from "@/lib/policies";
-import { assertMakerChecker, assertSegregationOfDuties } from "@/lib/operating-mode";
+import { assertMakerChecker, assertSegregationOfDuties, isSingleUserMode } from "@/lib/operating-mode";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
 import { prisma } from "@/lib/prisma";
 import {
@@ -422,7 +422,8 @@ export async function approveSalesInvoice(actor: SalesActor, id: string) {
       `);
       const outstanding = rows[0]?.balance || zero();
       if (outstanding.plus(invoice.grandTotal).gt(invoice.customer.creditLimit)) {
-        const reason = assertCreditOverrideAllowed(actor, { outstanding, invoiceTotal: invoice.grandTotal, creditLimit: invoice.customer.creditLimit });
+        const singleUser = await isSingleUserMode(tx, actor.companyId);
+        const reason = assertCreditOverrideAllowed(actor, { outstanding, invoiceTotal: invoice.grandTotal, creditLimit: invoice.customer.creditLimit }, singleUser);
         await appendAudit({
           companyId: actor.companyId,
           actorId: actor.userId,

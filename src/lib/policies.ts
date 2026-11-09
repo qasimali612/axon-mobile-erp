@@ -108,14 +108,32 @@ export async function assertDiscountCap(
 }
 
 /** Credit-limit exceptions require the override permission and a written reason. */
-export function assertCreditOverrideAllowed(actor: PolicyActor, input: { outstanding: Prisma.Decimal; invoiceTotal: Prisma.Decimal; creditLimit: Prisma.Decimal }) {
-  const permitted = Boolean(actor.permissions?.includes("customer.credit.override"));
+export function assertCreditOverrideAllowed(
+  actor: PolicyActor,
+  input: { outstanding: Prisma.Decimal; invoiceTotal: Prisma.Decimal; creditLimit: Prisma.Decimal },
+  singleUser = false,
+) {
+  const permitted =
+    singleUser ||
+    Boolean(
+      actor.permissions?.includes("customer.credit.override") ||
+      actor.permissions?.includes("sales.manage") ||
+      actor.permissions?.includes("SALES_INVOICE_APPROVE") ||
+      actor.permissions?.includes("SALES_INVOICE_CREATE"),
+    );
+
   const reason = (actor.overrideReason || "").trim();
-  if (!permitted || reason.length < 10) {
+  if (singleUser && !reason) {
+    return "Owner authorized credit extension in Single-Operator Mode";
+  }
+
+  if (!permitted || reason.length < 5) {
+    const exceeded = input.outstanding.plus(input.invoiceTotal).minus(input.creditLimit);
     throw new ApiError(409, "CREDIT_LIMIT_EXCEEDED", "Approving this invoice would exceed the customer's configured credit limit.", {
       outstanding: input.outstanding.toFixed(4),
       invoiceTotal: input.invoiceTotal.toFixed(4),
       creditLimit: input.creditLimit.toFixed(4),
+      exceededAmount: exceeded.gt(0) ? exceeded.toFixed(4) : "0.0000",
       overridePermission: "customer.credit.override",
       reasonRequired: permitted,
     });

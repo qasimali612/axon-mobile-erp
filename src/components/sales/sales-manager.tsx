@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Ban, Banknote, Edit3, PackageCheck, Printer, RefreshCw, RotateCcw, Search, ShoppingCart, X } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Ban, Banknote, Edit3, PackageCheck, Printer, RefreshCw, RotateCcw, Search, ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentReversalDialog } from "@/components/operations/document-reversal-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,8 @@ export function SalesManager({ currency, userId, permissions, initialStatus = ""
   const [cancelTarget, setCancelTarget] = useState<any>(null);
   const [reversalTarget, setReversalTarget] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [creditOverrideTarget, setCreditOverrideTarget] = useState<any>(null);
+  const [creditOverrideReason, setCreditOverrideReason] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState(initialStatus);
@@ -59,13 +61,24 @@ export function SalesManager({ currency, userId, permissions, initialStatus = ""
   useEffect(() => { setPage(1); }, [debouncedSearch, from, pageSize, paymentStatus, status, to]);
   useEffect(() => { void load(); }, [load]);
 
-  async function act(row: any, action: string) {
+  async function act(row: any, action: string, overrideReason?: string) {
     if (action === "post" && !window.confirm(`Post ${row.invoiceNumber}? Stock, device custody, COGS, receivable, revenue, and tax will be committed atomically.`)) return;
     setActingId(row.id);
-    const response = await fetch(`/api/sales/invoices/${row.id}/${action}`, { method: "POST" });
+    const response = await fetch(`/api/sales/invoices/${row.id}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(overrideReason ? { reason: overrideReason } : {}),
+    });
     const body = await response.json().catch(() => null);
     setActingId("");
-    if (!response.ok) return toast.error(body?.error?.message || `${titleCase(action)} failed.`);
+    if (!response.ok) {
+      if (body?.error?.code === "CREDIT_LIMIT_EXCEEDED") {
+        setCreditOverrideTarget({ row, details: body.error.details });
+        setCreditOverrideReason(`Authorized credit extension for invoice ${row.invoiceNumber}`);
+        return;
+      }
+      return toast.error(body?.error?.message || `${titleCase(action)} failed.`);
+    }
     toast.success(`${row.invoiceNumber} ${action === "submit" ? "submitted" : action === "approve" ? "approved" : "posted"}.`);
     void load();
   }
@@ -104,5 +117,79 @@ export function SalesManager({ currency, userId, permissions, initialStatus = ""
     <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-900"><b>Serialized sales:</b> either IMEI resolves to the same physical unit. Drafts do not reserve or issue stock. Posting revalidates every unit and balance, then commits stock, custody, actual-cost COGS, revenue, tax, receivable, and audit exactly once.</div>
     {reversalTarget && <DocumentReversalDialog key={reversalTarget.id} open documentNumber={reversalTarget.invoiceNumber} documentLabel="sales invoice" endpoint={`/api/sales/invoices/${reversalTarget.id}/reverse`} consequence="Posting is blocked if the invoice has posted payment allocations or returns, or if a sold physical unit has moved through another workflow." onClose={() => setReversalTarget(null)} onComplete={async () => { setReversalTarget(null); await load(); }}/>} 
     {cancelTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !actingId) setCancelTarget(null); }}><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-lg font-black text-slate-950">Cancel sales draft</h2><p className="mt-1 text-xs text-slate-500">{cancelTarget.invoiceNumber} · No stock or accounting entry has been posted.</p></div><button disabled={Boolean(actingId)} onClick={() => setCancelTarget(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4"/></button></div><label className="mt-5 block"><span className="label">Cancellation reason *</span><textarea autoFocus rows={4} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-500" placeholder="Enter a specific business reason (minimum 10 characters)…"/></label><div className="mt-4 flex justify-end gap-2"><button disabled={Boolean(actingId)} onClick={() => setCancelTarget(null)} className="h-10 rounded-lg border px-4 text-sm font-bold">Keep draft</button><button disabled={Boolean(actingId) || cancelReason.trim().length < 10} onClick={() => void cancelDraft()} className="h-10 rounded-lg bg-rose-600 px-4 text-sm font-black text-white disabled:opacity-50">{actingId ? "Cancelling…" : "Confirm cancellation"}</button></div></div></div>}
+    {creditOverrideTarget && (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !actingId) setCreditOverrideTarget(null); }}>
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                Credit Limit Authorization Required
+              </div>
+              <h2 className="mt-2 text-lg font-black text-slate-950">Approve with Credit Override</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {creditOverrideTarget.row.invoiceNumber} · Customer: <b className="text-slate-800">{creditOverrideTarget.row.customer.name}</b> ({creditOverrideTarget.row.customer.code})
+              </p>
+            </div>
+            <button disabled={Boolean(actingId)} onClick={() => setCreditOverrideTarget(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+            <div>
+              <span className="text-slate-500">Configured Credit Limit:</span>
+              <div className="font-bold text-slate-900">{formatMoney(creditOverrideTarget.details?.creditLimit || creditOverrideTarget.row.customer.creditLimit || 0, currency)}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Current AR Outstanding:</span>
+              <div className="font-bold text-slate-900">{formatMoney(creditOverrideTarget.details?.outstanding || 0, currency)}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Invoice Grand Total:</span>
+              <div className="font-bold text-blue-700">{formatMoney(creditOverrideTarget.details?.invoiceTotal || creditOverrideTarget.row.grandTotal, currency)}</div>
+            </div>
+            <div>
+              <span className="font-semibold text-amber-800">Exceeded Amount:</span>
+              <div className="font-black text-rose-600">{formatMoney(creditOverrideTarget.details?.exceededAmount || 0, currency)}</div>
+            </div>
+          </div>
+
+          <label className="mt-4 block">
+            <span className="label">Managerial Override Justification / Reason *</span>
+            <textarea
+              autoFocus
+              rows={3}
+              value={creditOverrideReason}
+              onChange={(event) => setCreditOverrideReason(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-500"
+              placeholder="e.g. Director authorized 15-day extension; PDC cheque received; VIP dealer account."
+            />
+          </label>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            This justification will be permanently stamped in the company financial audit trail alongside your user ID.
+          </p>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button disabled={Boolean(actingId)} onClick={() => setCreditOverrideTarget(null)} className="h-10 rounded-lg border px-4 text-sm font-bold">
+              Cancel
+            </button>
+            <button
+              disabled={Boolean(actingId) || creditOverrideReason.trim().length < 5}
+              onClick={async () => {
+                const target = creditOverrideTarget;
+                const reason = creditOverrideReason;
+                setCreditOverrideTarget(null);
+                await act(target.row, "approve", reason);
+              }}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-amber-600 px-4 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              <BadgeCheck className="h-4 w-4" />
+              {actingId ? "Authorizing…" : "Authorize & Approve Credit"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>;
 }

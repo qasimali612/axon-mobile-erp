@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Banknote,
   Barcode,
   CheckCircle2,
@@ -112,6 +113,8 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
   const [advanceBankAccountId, setAdvanceBankAccountId] = useState("");
   const [advanceReference, setAdvanceReference] = useState("");
   const [advanceTendered, setAdvanceTendered] = useState("");
+  const [creditOverrideDialog, setCreditOverrideDialog] = useState<any>(null);
+  const [creditOverrideReason, setCreditOverrideReason] = useState("");
 
   const scanRef = useRef<HTMLInputElement>(null);
   const customerRef = useRef<HTMLSelectElement>(null);
@@ -441,6 +444,19 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
               });
               return;
             }
+          } else if (approvePayload?.error?.code === "CREDIT_LIMIT_EXCEEDED") {
+            setCreditOverrideDialog({
+              invoiceId: targetInvoiceId,
+              invoiceNumber: invNum,
+              details: approvePayload.error.details,
+            });
+            setCreditOverrideReason(`Counter credit extension authorized for ${invNum}`);
+            setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "SUBMITTED" });
+            setNotice({
+              kind: "error",
+              text: `Customer credit limit exceeded. Managerial override required to approve and post ${invNum}.`,
+            });
+            return;
           }
         } catch {
           // If maker-checker in multi-user mode prevents self-approval, fall back gracefully to submitted
@@ -464,6 +480,74 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
     setNotes("");
     setNotice(null);
     requestAnimationFrame(() => scanRef.current?.focus());
+  }
+
+  async function confirmCreditOverride() {
+    if (!creditOverrideDialog || creditOverrideReason.trim().length < 5) return;
+    setBusy(true);
+    try {
+      const targetInvoiceId = creditOverrideDialog.invoiceId;
+      const invNum = creditOverrideDialog.invoiceNumber;
+      const advanceNum = num(advanceAmount);
+      const remainingCreditDue = Math.max(0, totals.grand - advanceNum);
+
+      const approveRes = await fetch(`/api/sales/invoices/${targetInvoiceId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: creditOverrideReason.trim() }),
+      });
+      const approvePayload = await approveRes.json().catch(() => null);
+      if (!approveRes.ok) throw new Error(approvePayload?.error?.message || "Credit authorization failed.");
+
+      const postRes = await fetch(`/api/sales/invoices/${targetInvoiceId}/post`, { method: "POST" });
+      const postPayload = await postRes.json().catch(() => null);
+      if (!postRes.ok) throw new Error(postPayload?.error?.message || "Invoice was approved with override but posting failed.");
+
+      // Auto-record customer receipt voucher for advance payment
+      if (saleType === "credit" && advanceNum > 0) {
+        try {
+          const pmtRes = await fetch("/api/payments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              branchId,
+              customerId,
+              cashAccountId: advanceMethod === "CASH" ? advanceCashAccountId : null,
+              bankAccountId: advanceMethod === "BANK" ? advanceBankAccountId : null,
+              paymentDate: invoiceDate,
+              direction: "CUSTOMER_RECEIPT",
+              currencyCode: currency,
+              amount: String(advanceNum),
+              reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
+              notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
+              idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
+              allocations: [{ salesInvoiceId: targetInvoiceId, amount: String(advanceNum) }],
+            }),
+          });
+          const pmtPayload = await pmtRes.json().catch(() => null);
+          if (pmtRes.ok && pmtPayload?.data?.id) {
+            const pmtId = pmtPayload.data.id;
+            await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
+            await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });
+            await fetch(`/api/payments/${pmtId}/post`, { method: "POST" });
+          }
+        } catch (pmtErr) {
+          console.error("Auto-posting advance receipt failed:", pmtErr);
+        }
+      }
+
+      setCreditOverrideDialog(null);
+      setCreditOverrideReason("");
+      setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "POSTED" });
+      setNotice({
+        kind: "success",
+        text: `⚡ ${invNum} approved with credit override and POSTED!${saleType === "credit" && advanceNum > 0 ? ` Advance payment of ${money(advanceNum, currency)} received via ${advanceMethod === "CASH" ? "Cash Drawer" : "Bank"}. Remaining balance due: ${money(remainingCreditDue, currency)}.` : " Physical stock deducted and financial ledger updated."}`,
+      });
+    } catch (err) {
+      setNotice({ kind: "error", text: err instanceof Error ? err.message : "Credit override failed." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -1406,6 +1490,76 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                 Type a query or press Search to browse available warehouse stock.
               </div>
             )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {creditOverrideDialog && (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setCreditOverrideDialog(null); }}>
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                Customer Credit Limit Exceeded
+              </div>
+              <h2 className="mt-2 text-lg font-black text-slate-950">Authorize Credit Checkout</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Invoice {creditOverrideDialog.invoiceNumber} · Customer: <b className="text-slate-800">{selectedCustomer?.name || "Customer"}</b>
+              </p>
+            </div>
+            <button disabled={busy} onClick={() => setCreditOverrideDialog(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+            <div>
+              <span className="text-slate-500">Configured Credit Limit:</span>
+              <div className="font-bold text-slate-900">{money(Number(creditOverrideDialog.details?.creditLimit || selectedCustomer?.creditLimit || 0), currency)}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Current AR Outstanding:</span>
+              <div className="font-bold text-slate-900">{money(Number(creditOverrideDialog.details?.outstanding || 0), currency)}</div>
+            </div>
+            <div>
+              <span className="text-slate-500">Invoice Grand Total:</span>
+              <div className="font-bold text-blue-700">{money(Number(creditOverrideDialog.details?.invoiceTotal || totals.grand), currency)}</div>
+            </div>
+            <div>
+              <span className="font-semibold text-amber-800">Exceeded Amount:</span>
+              <div className="font-black text-rose-600">{money(Number(creditOverrideDialog.details?.exceededAmount || 0), currency)}</div>
+            </div>
+          </div>
+
+          <label className="mt-4 block">
+            <span className="text-xs font-bold text-slate-700">Managerial Authorization Justification *</span>
+            <textarea
+              autoFocus
+              rows={3}
+              value={creditOverrideReason}
+              onChange={(event) => setCreditOverrideReason(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-500"
+              placeholder="e.g. Authorized by Store Manager; Post-dated cheque accepted; Approved dealer credit."
+            />
+          </label>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            This justification will be stamped into the financial audit trail alongside your user credentials.
+          </p>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button disabled={busy} onClick={() => setCreditOverrideDialog(null)} className="h-10 rounded-lg border px-4 text-sm font-bold">
+              Cancel
+            </button>
+            <button
+              disabled={busy || creditOverrideReason.trim().length < 5}
+              onClick={() => void confirmCreditOverride()}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-amber-600 px-4 text-sm font-black text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {busy ? "Authorizing & Posting…" : "Authorize & Complete Sale"}
+            </button>
           </div>
         </div>
       </div>
