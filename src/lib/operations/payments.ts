@@ -11,7 +11,7 @@ import { appendAudit } from "@/lib/audit";
 import { assertApprovalPolicy } from "@/lib/policies";
 import { assertMakerChecker, assertSegregationOfDuties } from "@/lib/operating-mode";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
-import { prisma } from "@/lib/prisma";
+import { ensureSingleUserDatabase, prisma } from "@/lib/prisma";
 import {
   allocateOperationalNumber,
   postOperationalJournal,
@@ -305,6 +305,7 @@ async function validateAllocations(tx: Prisma.TransactionClient, payment: NonNul
 
 export async function approvePayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(async (tx) => {
+    await ensureSingleUserDatabase(tx as any);
     const payment = await lockPayment(tx, id, actor.companyId);
     if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
     if (payment.status === OperationalDocumentStatus.APPROVED || payment.status === OperationalDocumentStatus.POSTED) return payment;
@@ -319,6 +320,7 @@ export async function approvePayment(actor: PaymentActor, id: string) {
 export async function postPayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(
     async (tx) => {
+      await ensureSingleUserDatabase(tx as any);
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
       if (payment.status === OperationalDocumentStatus.POSTED) return payment;

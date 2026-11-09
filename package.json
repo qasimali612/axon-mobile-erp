@@ -7,7 +7,7 @@
     "postinstall": "prisma generate",
     "dev": "next dev --hostname 0.0.0.0",
     "dev:local": "bash scripts/dev-local.sh",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start --hostname 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.foundation.json --pretty false && tsc -p tsconfig.finance.json --pretty false && tsc -p tsconfig.ops.json --pretty false && tsc -p tsconfig.scripts.json --pretty false",

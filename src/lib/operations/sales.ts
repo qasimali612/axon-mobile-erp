@@ -14,7 +14,7 @@ import { appendAudit } from "@/lib/audit";
 import { assertApprovalPolicy, assertCreditOverrideAllowed, assertDiscountCap } from "@/lib/policies";
 import { assertMakerChecker, assertSegregationOfDuties, isSingleUserMode } from "@/lib/operating-mode";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
-import { prisma } from "@/lib/prisma";
+import { ensureSingleUserDatabase, prisma } from "@/lib/prisma";
 import {
   allocateOperationalNumber,
   postOperationalJournal,
@@ -406,6 +406,7 @@ export async function submitSalesInvoice(actor: SalesActor, id: string) {
 
 export async function approveSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(async (tx) => {
+    await ensureSingleUserDatabase(tx as any);
     const invoice = await lockSalesInvoice(tx, id, actor.companyId);
     if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
     if (invoice.status === OperationalDocumentStatus.APPROVED || invoice.status === OperationalDocumentStatus.POSTED) return invoice;
@@ -446,6 +447,7 @@ export async function approveSalesInvoice(actor: SalesActor, id: string) {
 export async function postSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(
     async (tx) => {
+      await ensureSingleUserDatabase(tx as any);
       const invoice = await lockSalesInvoice(tx, id, actor.companyId);
       if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
       if (invoice.status === OperationalDocumentStatus.POSTED) return invoice;

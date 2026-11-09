@@ -144,24 +144,6 @@ export async function apiError(error: unknown) {
     );
   }
 
-  if (
-    errStr.includes("maker_checker") ||
-    errStr.includes("workflow_metadata") ||
-    errStr.includes("Preparer cannot approve") ||
-    errStr.includes("Preparer cannot post")
-  ) {
-    console.error("[Maker Checker Violation]:", errStr);
-    return NextResponse.json(
-      {
-        error: {
-          code: "MAKER_CHECKER_REQUIRED",
-          message: "Segregation of duties: In Multi-User Mode, a separate authorized officer must approve or post this record. Switch to Single-User Mode in the top navigation bar if operating as a sole business owner.",
-        },
-      },
-      { status: 409 },
-    );
-  }
-
   if (errStr.includes("Operational document children are immutable after draft")) {
     console.error("[Child Immutability Violation]:", errStr);
     return NextResponse.json(
