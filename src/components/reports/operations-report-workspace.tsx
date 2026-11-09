@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { formatDate, formatMoney, titleCase } from "@/lib/utils";
 
 export type ReportKey =
@@ -112,13 +113,13 @@ const columns: Record<ReportKey, Array<{ key: string; label: string; money?: boo
   "purchase-orders": [{ key: "documentNumber", label: "PO" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Supplier" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "orderedQuantity", label: "Ordered" }, { key: "receivedQuantity", label: "Received" }, { key: "outstandingQuantity", label: "Outstanding" }, { key: "unitCost", label: "Unit cost", money: true }, { key: "lineTotal", label: "Line total", money: true }],
   "goods-receipts": [{ key: "documentNumber", label: "GRN" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Supplier" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "acceptedQuantity", label: "Accepted" }, { key: "rejectedQuantity", label: "Rejected" }, { key: "landedUnitCost", label: "Landed cost", money: true }, { key: "lineTotal", label: "Value", money: true }, { key: "identifiers", label: "IMEI / serial" }],
   "purchase-returns": [{ key: "documentNumber", label: "Return" }, { key: "sourceDocument", label: "Source GRN" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Supplier" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "disposition", label: "Disposition" }, { key: "total", label: "Supplier credit", money: true }, { key: "cost", label: "Inventory cost", money: true }, { key: "identifiers", label: "IMEI / serial" }],
-  sales: [{ key: "documentNumber", label: "Invoice" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Customer" }, { key: "salesperson", label: "Salesperson" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "netRevenue", label: "Net revenue", money: true }, { key: "tax", label: "Tax", money: true }, { key: "total", label: "Total", money: true }, { key: "identifiers", label: "IMEI / serial" }],
-  "sales-returns": [{ key: "documentNumber", label: "Return" }, { key: "sourceDocument", label: "Source invoice" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Customer" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "disposition", label: "Disposition" }, { key: "total", label: "Customer credit", money: true }, { key: "identifiers", label: "IMEI / serial" }],
+  sales: [{ key: "documentNumber", label: "Invoice" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Customer" }, { key: "salesperson", label: "Salesperson" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "netRevenue", label: "Revenue", money: true }, { key: "cost", label: "Cost", money: true }, { key: "grossProfit", label: "Gross profit", money: true }, { key: "marginPercent", label: "Margin %" }, { key: "total", label: "Total", money: true }, { key: "identifiers", label: "IMEI / serial" }],
+  "sales-returns": [{ key: "documentNumber", label: "Return" }, { key: "sourceDocument", label: "Source invoice" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Customer" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "disposition", label: "Disposition" }, { key: "total", label: "Customer credit", money: true }, { key: "cost", label: "Cost", money: true }, { key: "identifiers", label: "IMEI / serial" }],
   inventory: [{ key: "branch", label: "Branch" }, { key: "warehouse", label: "Warehouse" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "tracking", label: "Tracking" }, { key: "quantity", label: "On hand" }, { key: "reserved", label: "Reserved" }, { key: "available", label: "Available" }, { key: "averageCost", label: "Average cost", money: true }, { key: "inventoryValue", label: "Stock value", money: true }],
   devices: [{ key: "status", label: "Status" }, { key: "branch", label: "Branch" }, { key: "warehouse", label: "Warehouse" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "identifiers", label: "IMEI / serial" }, { key: "acquisitionDate", label: "Received", date: true }, { key: "acquisitionCost", label: "Cost", money: true }, { key: "soldAt", label: "Sold", date: true }],
   movements: [{ key: "date", label: "Date", date: true }, { key: "movementType", label: "Movement" }, { key: "documentNumber", label: "Source" }, { key: "warehouse", label: "Warehouse" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "unitCost", label: "Unit cost", money: true }, { key: "totalCost", label: "Total cost", money: true }, { key: "identifiers", label: "IMEI / serial" }],
   reorder: [{ key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "tracking", label: "Tracking" }, { key: "onHand", label: "On hand" }, { key: "reorderLevel", label: "Reorder level" }, { key: "maxStockLevel", label: "Max level" }, { key: "suggestedOrderQty", label: "Suggested qty" }, { key: "preferredSupplier", label: "Preferred supplier" }, { key: "supplierSku", label: "Supplier code" }, { key: "lastCost", label: "Last cost", money: true }, { key: "leadTimeDays", label: "Lead days" }, { key: "minOrderQty", label: "Min order" }],
-  profitability: [{ key: "documentNumber", label: "Invoice" }, { key: "date", label: "Date", date: true }, { key: "party", label: "Customer" }, { key: "salesperson", label: "Salesperson" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "netRevenue", label: "Revenue", money: true }, { key: "cost", label: "Cost", money: true }, { key: "grossProfit", label: "Gross profit", money: true }, { key: "marginPercent", label: "Margin %" }, { key: "identifiers", label: "IMEI / serial" }],
+  profitability: [{ key: "documentNumber", label: "Invoice" }, { key: "date", label: "Date", date: true }, { key: "status", label: "Status" }, { key: "party", label: "Customer" }, { key: "salesperson", label: "Salesperson" }, { key: "sku", label: "SKU" }, { key: "product", label: "Product / variant" }, { key: "quantity", label: "Quantity" }, { key: "netRevenue", label: "Revenue", money: true }, { key: "cost", label: "Cost", money: true }, { key: "grossProfit", label: "Gross profit", money: true }, { key: "marginPercent", label: "Margin %" }, { key: "identifiers", label: "IMEI / serial" }],
 
   // Enterprise additions
   "stock-by-brand": [{ key: "brand", label: "Brand" }, { key: "variantCount", label: "Variants" }, { key: "quantity", label: "On Hand" }, { key: "available", label: "Available" }, { key: "inventoryValue", label: "Stock Value", money: true }],
@@ -738,6 +739,40 @@ export function OperationsReportWorkspace({
                           ) : col.date ? (
                             val ? (
                               formatDate(val)
+                            ) : (
+                              "—"
+                            )
+                          ) : col.key === "status" ? (
+                            <Badge
+                              tone={
+                                val === "POSTED" || val === "IN_STOCK" || val === "ACCEPTED"
+                                  ? "green"
+                                  : val === "SUBMITTED" || val === "PENDING"
+                                  ? "amber"
+                                  : val === "APPROVED"
+                                  ? "blue"
+                                  : val === "REVERSED" || val === "CANCELLED" || val === "REJECTED"
+                                  ? "red"
+                                  : "slate"
+                              }
+                            >
+                              {titleCase(String(val ?? "—"))}
+                            </Badge>
+                          ) : col.key === "marginPercent" ? (
+                            val !== null && val !== undefined ? (
+                              <span
+                                className={`font-mono font-bold ${
+                                  Number(val) > 20
+                                    ? "text-emerald-700"
+                                    : Number(val) > 5
+                                    ? "text-blue-700"
+                                    : Number(val) >= 0
+                                    ? "text-slate-800"
+                                    : "text-rose-600"
+                                }`}
+                              >
+                                {Number(val).toFixed(2)}%
+                              </span>
                             ) : (
                               "—"
                             )

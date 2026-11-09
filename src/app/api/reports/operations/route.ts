@@ -259,7 +259,51 @@ export async function GET(request: Request) {
         include: { invoice: { include: { branch: { select: { code: true, name: true } }, warehouse: { select: { code: true, name: true } }, customer: { select: { code: true, name: true } }, salesperson: { select: { fullName: true } } } }, product: { select: { sku: true, name: true, trackingMethod: true, brand: { select: { name: true } } } }, variant: { select: { sku: true, name: true } }, units: { include: { stockUnit: { include: { identifiers: { select: { value: true, type: true, slot: true } } } } } } },
         orderBy: [{ invoice: { invoiceDate: "desc" } }, { invoice: { invoiceNumber: "desc" } }, { lineNumber: "asc" }], take,
       });
-      const rows = lines.map((line) => { const netRevenue = line.lineTotal.minus(line.taxAmount); const profit = netRevenue.minus(line.costTotal); return { documentId: line.invoiceId, documentNumber: line.invoice.invoiceNumber, date: line.invoice.invoiceDate, status: line.invoice.status, branch: line.invoice.branch.code, warehouse: line.invoice.warehouse.code, partyCode: line.invoice.customer.code, party: line.invoice.customer.name, salesperson: line.invoice.salesperson?.fullName, productId: line.productId, product: line.product.name, brand: line.product.brand?.name, variant: line.variant.name, sku: line.variant.sku, tracking: line.product.trackingMethod, quantity: line.quantity, netRevenue, tax: line.taxAmount, total: line.lineTotal, cost: report === "profitability" ? line.costTotal : null, grossProfit: report === "profitability" ? profit : null, marginPercent: report === "profitability" && netRevenue.gt(0) ? profit.div(netRevenue).times(100).toDecimalPlaces(2) : null, identifiers: line.units.flatMap((unit) => unit.stockUnit.identifiers.map((identifier) => identifier.value)).join(", ") }; });
+      const rows = lines.map((line) => {
+        const netRevenue = line.lineTotal.minus(line.taxAmount);
+        const unitCostsSum = line.units.reduce(
+          (sum, u) => sum.plus(u.stockUnit?.acquisitionCost ? new Prisma.Decimal(u.stockUnit.acquisitionCost) : new Prisma.Decimal(0)),
+          new Prisma.Decimal(0),
+        );
+        const resolvedCost = line.costTotal.gt(0)
+          ? line.costTotal
+          : unitCostsSum.gt(0)
+          ? unitCostsSum
+          : line.costTotal;
+
+        const isCostAllowed = canViewCost;
+        const profit = netRevenue.minus(resolvedCost);
+        const marginPercent =
+          isCostAllowed && netRevenue.gt(0)
+            ? profit.div(netRevenue).times(100).toDecimalPlaces(2)
+            : null;
+
+        return {
+          documentId: line.invoiceId,
+          documentNumber: line.invoice.invoiceNumber,
+          date: line.invoice.invoiceDate,
+          status: line.invoice.status,
+          branch: line.invoice.branch.code,
+          warehouse: line.invoice.warehouse.code,
+          partyCode: line.invoice.customer.code,
+          party: line.invoice.customer.name,
+          salesperson: line.invoice.salesperson?.fullName,
+          productId: line.productId,
+          product: line.product.name,
+          brand: line.product.brand?.name,
+          variant: line.variant.name,
+          sku: line.variant.sku,
+          tracking: line.product.trackingMethod,
+          quantity: line.quantity,
+          netRevenue,
+          tax: line.taxAmount,
+          total: line.lineTotal,
+          cost: isCostAllowed ? resolvedCost : null,
+          grossProfit: isCostAllowed ? profit : null,
+          marginPercent,
+          identifiers: line.units.flatMap((unit) => unit.stockUnit.identifiers.map((identifier) => identifier.value)).join(", "),
+        };
+      });
       return respond(request, context, report, rows, rows.length === take);
     }
 
