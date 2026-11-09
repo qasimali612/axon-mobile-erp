@@ -261,6 +261,9 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
       ) {
         throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Posted, reversed, or cancelled sales invoices cannot be edited.");
       }
+      if (current.status === OperationalDocumentStatus.APPROVED) {
+        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Approved sales invoices cannot be edited directly. Please cancel or post the invoice.");
+      }
       const canEdit =
         current.preparedById === actor.userId ||
         !actor.permissions ||
@@ -268,8 +271,26 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
         actor.permissions.includes("SALES_INVOICE_CREATE") ||
         actor.permissions.includes("sales.manage");
       if (!canEdit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may edit this sales invoice.");
+
+      // Revert parent status to DRAFT first so modifying lines does not violate the database protect_operational_child trigger
+      if (current.status === OperationalDocumentStatus.SUBMITTED) {
+        await tx.salesInvoice.update({
+          where: { id },
+          data: { status: OperationalDocumentStatus.DRAFT, approvedById: null, approvedAt: null },
+        });
+      }
+
       const prepared = await prepareSalesDraftData(tx, actor, input);
-      await tx.salesInvoiceUnit.deleteMany({ where: { invoiceLine: { invoiceId: id } } });
+      const existingLines = await tx.salesInvoiceLine.findMany({
+        where: { invoiceId: id },
+        select: { id: true },
+      });
+      const lineIds = existingLines.map((l) => l.id);
+      if (lineIds.length > 0) {
+        await tx.salesInvoiceUnit.deleteMany({
+          where: { invoiceLineId: { in: lineIds } },
+        });
+      }
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
       const updated = await tx.salesInvoice.update({
         where: { id },
@@ -279,6 +300,7 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
           customerId: input.customerId,
           salespersonId: prepared.salespersonId,
           priceListId: prepared.priceListId,
+          preparedById: actor.userId,
           status: OperationalDocumentStatus.DRAFT,
           approvedById: null,
           approvedAt: null,
@@ -335,7 +357,13 @@ export async function cancelSalesInvoiceDraft(actor: SalesActor, id: string, rea
     const invoice = await lockSalesInvoice(tx, id, actor.companyId);
     if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
     if (invoice.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft sales invoice can be cancelled through this action.");
-    if (invoice.preparedById !== actor.userId) throw new ApiError(403, "NOT_PREPARER", "Only the preparer may cancel this draft sales invoice.");
+    const canCancel =
+      invoice.preparedById === actor.userId ||
+      !actor.permissions ||
+      actor.permissions.includes("SALES_INVOICE_APPROVE") ||
+      actor.permissions.includes("SALES_INVOICE_CREATE") ||
+      actor.permissions.includes("sales.manage");
+    if (!canCancel) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may cancel this draft sales invoice.");
     const updated = await tx.salesInvoice.update({ where: { id }, data: { status: OperationalDocumentStatus.CANCELLED, reversalReason: reason } });
     await appendAudit({
       companyId: actor.companyId,
@@ -359,7 +387,16 @@ export async function submitSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const invoice = await lockSalesInvoice(tx, id, actor.companyId);
     if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
-    if (invoice.preparedById !== actor.userId) throw new ApiError(403, "NOT_PREPARER", "Only the preparer may submit this invoice.");
+    if (invoice.status === OperationalDocumentStatus.SUBMITTED) {
+      return invoice;
+    }
+    const canSubmit =
+      invoice.preparedById === actor.userId ||
+      !actor.permissions ||
+      actor.permissions.includes("SALES_INVOICE_APPROVE") ||
+      actor.permissions.includes("SALES_INVOICE_CREATE") ||
+      actor.permissions.includes("sales.manage");
+    if (!canSubmit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may submit this invoice.");
     if (invoice.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft invoice can be submitted.");
     await assertDiscountCap(tx, { actor, subtotal: invoice.subtotal, discountTotal: invoice.discountTotal, entityId: id, reference: invoice.invoiceNumber });
     await assertApprovalPolicy(tx, { actor, documentType: "SALES_INVOICE", amount: invoice.grandTotal, entityType: "SalesInvoice", entityId: id, reference: invoice.invoiceNumber });

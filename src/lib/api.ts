@@ -162,10 +162,54 @@ export async function apiError(error: unknown) {
     );
   }
 
-  // Always log unexpected server errors for operators; the client response stays generic.
-  console.error(error);
+  if (errStr.includes("Operational document children are immutable after draft")) {
+    console.error("[Child Immutability Violation]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "DOCUMENT_NOT_DRAFT",
+          message: "Line items can only be modified while the document is in Draft status. Revert document to Draft before editing lines.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  if (errStr.includes("Invalid operational document status transition")) {
+    console.error("[Status Transition Violation]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_STATUS_TRANSITION",
+          message: "Invalid document status transition. Please refresh and check current document status.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  if (errStr.includes("Stock state may only change through the inventory posting service")) {
+    console.error("[Inventory Posting Guard]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVENTORY_POSTING_GUARD",
+          message: "Stock quantities and serialized units can only be modified through official posting workflows.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  // Always log unexpected server errors for operators; surface a clean message when available
+  console.error("[Unexpected Server Error]:", error);
+  const rawMsg = error instanceof Error ? error.message : "";
+  const cleanMsg =
+    rawMsg && !rawMsg.includes("\n") && !rawMsg.includes("at ") && !rawMsg.includes("PrismaClient")
+      ? rawMsg
+      : "The request could not be completed.";
   return NextResponse.json(
-    { error: { code: "INTERNAL_ERROR", message: "The request could not be completed." } },
+    { error: { code: "INTERNAL_ERROR", message: cleanMsg } },
     { status: 500 },
   );
 }
