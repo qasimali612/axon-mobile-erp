@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Building2,
   ChevronLeft,
@@ -47,8 +48,12 @@ export function PartyManager({
   permissions: string[];
   initialTab?: Tab;
 }) {
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab") as Tab | null;
   const preferred =
-    initialTab && permissions.includes(initialTab === "customers" ? "customer.manage" : "supplier.manage")
+    urlTab && (urlTab === "customers" || urlTab === "suppliers") && permissions.includes(urlTab === "customers" ? "customer.manage" : "supplier.manage")
+      ? urlTab
+      : initialTab && permissions.includes(initialTab === "customers" ? "customer.manage" : "supplier.manage")
       ? initialTab
       : permissions.includes("customer.manage")
       ? "customers"
@@ -89,6 +94,12 @@ export function PartyManager({
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    if (searchParams.get("new") === "1" && can(tab)) {
+      openCreate();
+    }
+  }, []);
 
   useEffect(() => {
     setPage(1);
