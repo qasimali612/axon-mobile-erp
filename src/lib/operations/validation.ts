@@ -4,16 +4,22 @@ import { ApiError } from "@/lib/api";
 
 export const operationUuid = z.string().uuid();
 export const operationDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD format.");
-const positiveDecimal = z
-  .string()
-  .regex(/^\d{1,15}(?:\.\d{1,4})?$/, "Use a non-negative decimal with at most four places.")
-  .refine((value) => Number(value) > 0, "The value must be greater than zero.");
-const nonnegativeMoney = z.string().regex(/^\d{1,15}(?:\.\d{1,4})?$/, "Use a non-negative amount with at most four places.");
+const positiveDecimal = z.preprocess(
+  (val) => (typeof val === "string" ? val.replace(/,/g, "").trim() : typeof val === "number" ? String(val) : val),
+  z
+    .string()
+    .regex(/^\d{1,15}(?:\.\d{1,4})?$/, "Use a non-negative decimal with at most four places.")
+    .refine((value) => Number(value) > 0, "The value must be greater than zero.")
+);
+const nonnegativeMoney = z.preprocess(
+  (val) => (typeof val === "string" ? val.replace(/,/g, "").trim() : typeof val === "number" ? String(val) : val),
+  z.string().regex(/^\d{1,15}(?:\.\d{1,4})?$/, "Use a non-negative amount with at most four places.")
+);
 const signedNonzeroDecimal = z
   .string()
   .regex(/^-?\d{1,15}(?:\.\d{1,4})?$/, "Use a signed decimal with at most four places.")
   .refine((value) => Number(value) !== 0, "The value cannot be zero.");
-const idempotencyKey = z.string().trim().min(8).max(120);
+const idempotencyKey = z.string().trim().min(8).max(120).default(() => crypto.randomUUID());
 
 export const purchaseOrderDraftSchema = z.object({
   branchId: operationUuid,

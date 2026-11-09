@@ -418,6 +418,7 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                       reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
                       notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
                       idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
+                      autoPost: true,
                       allocations: [
                         {
                           salesInvoiceId: targetInvoiceId,
@@ -427,7 +428,7 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                     }),
                   });
                   const pmtPayload = await pmtRes.json().catch(() => null);
-                  if (pmtRes.ok && pmtPayload?.data?.id) {
+                  if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
                     const pmtId = pmtPayload.data.id;
                     await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
                     await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });
@@ -521,11 +522,12 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
               reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
               notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
               idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
+              autoPost: true,
               allocations: [{ salesInvoiceId: targetInvoiceId, amount: String(advanceNum) }],
             }),
           });
           const pmtPayload = await pmtRes.json().catch(() => null);
-          if (pmtRes.ok && pmtPayload?.data?.id) {
+          if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
             const pmtId = pmtPayload.data.id;
             await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
             await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });

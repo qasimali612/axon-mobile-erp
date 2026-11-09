@@ -25,7 +25,11 @@ export async function GET() {
       context.permissions.includes("USER_MANAGE") ||
       context.permissions.includes("settings.manage") ||
       context.permissions.includes("finance.manage") ||
-      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR"].includes(r.name));
+      context.permissions.includes("SALES_INVOICE_POST") ||
+      context.permissions.includes("PAYMENT_POST") ||
+      context.permissions.includes("SALES_INVOICE_APPROVE") ||
+      context.permissions.includes("PAYMENT_APPROVE") ||
+      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR", "MANAGER"].includes(r.name));
 
     return NextResponse.json(
       jsonSafe({
@@ -50,7 +54,11 @@ export async function POST(request: Request) {
       context.permissions.includes("USER_MANAGE") ||
       context.permissions.includes("settings.manage") ||
       context.permissions.includes("finance.manage") ||
-      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR"].includes(r.name));
+      context.permissions.includes("SALES_INVOICE_POST") ||
+      context.permissions.includes("PAYMENT_POST") ||
+      context.permissions.includes("SALES_INVOICE_APPROVE") ||
+      context.permissions.includes("PAYMENT_APPROVE") ||
+      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR", "MANAGER"].includes(r.name));
 
     if (!canManage) {
       throw new ApiError(403, "FORBIDDEN", "You do not have permission to change the operating mode.");

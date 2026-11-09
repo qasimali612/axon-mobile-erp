@@ -632,6 +632,7 @@ export function PaymentRegister({
       .join(" · ") || null;
 
     try {
+      const cleanAmount = String(amount).replace(/,/g, "").trim();
       const payload = {
         branchId,
         customerId: isCustomer ? partyId : null,
@@ -641,9 +642,11 @@ export function PaymentRegister({
         paymentDate: date,
         direction,
         currencyCode: currency,
-        amount,
+        amount: cleanAmount,
         reference: effectiveReference,
         notes: effectiveNotes,
+        autoPost: andPost,
+        idempotencyKey: crypto.randomUUID(),
         allocations: finalAllocations,
       };
 
@@ -661,19 +664,22 @@ export function PaymentRegister({
         response = await fetch("/api/payments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...payload,
-            idempotencyKey: crypto.randomUUID(),
-          }),
+          body: JSON.stringify(payload),
         });
       }
 
       const body = await response.json().catch(() => null);
       if (!response.ok) {
-        return toast.error(
+        let msg =
           body?.error?.message ||
-            (editingPaymentId ? "Payment draft could not be updated." : "Payment draft could not be created.")
-        );
+          (editingPaymentId ? "Payment draft could not be updated." : "Payment draft could not be created.");
+        if (body?.error?.details && typeof body.error.details === "object") {
+          const detailStr = Object.entries(body.error.details)
+            .map(([field, err]) => `${field}: ${Array.isArray(err) ? err.join(", ") : String(err)}`)
+            .join(" · ");
+          if (detailStr) msg = `${msg} [${detailStr}]`;
+        }
+        return toast.error(msg);
       }
 
       const created = body.data;
@@ -683,6 +689,20 @@ export function PaymentRegister({
       }
 
       if (andPost && targetIdToPost) {
+        if (created?.status === "POSTED") {
+          toast.success(`${targetNumToPost || "Payment"} saved and posted to General Ledger!`, {
+            action: {
+              label: "Print Voucher",
+              onClick: () => window.open(`/finance/payments/${targetIdToPost}/print`, "_blank"),
+            },
+            duration: 8000,
+          });
+          setOpen(false);
+          resetForm();
+          void load();
+          return;
+        }
+
         try {
           const subRes = await fetch(`/api/payments/${targetIdToPost}/submit`, { method: "POST" });
           const appRes = await fetch(`/api/payments/${targetIdToPost}/approve`, { method: "POST" });
@@ -708,7 +728,7 @@ export function PaymentRegister({
             }
           }
         } catch {
-          toast.success(`${targetNumToPost || "Payment"} saved.`);
+          toast.info(`${targetNumToPost || "Payment"} saved.`);
         }
       } else {
         toast.success(
@@ -1538,87 +1558,52 @@ export function PaymentRegister({
               </button>
             </div>
 
-            {/* Direction Selector Cards */}
-            <div className="border-b border-slate-100 bg-slate-50/70 p-4">
-              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Select Voucher Direction
-              </span>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
-                  {
-                    key: "CUSTOMER_RECEIPT",
-                    label: "Customer Receipt",
-                    sub: "Money In · AR Collection",
-                    color: "border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20",
-                    hover: "hover:border-emerald-300 hover:bg-emerald-50/40",
-                    icon: ArrowDownLeft,
-                  },
-                  {
-                    key: "SUPPLIER_PAYMENT",
-                    label: "Supplier Payment",
-                    sub: "Money Out · AP Settlement",
-                    color: "border-blue-500 bg-blue-50 text-blue-900 ring-2 ring-blue-500/20",
-                    hover: "hover:border-blue-300 hover:bg-blue-50/40",
-                    icon: ArrowUpRight,
-                  },
-                  {
-                    key: "CUSTOMER_REFUND",
-                    label: "Customer Refund",
-                    sub: "Money Out · Return Payout",
-                    color: "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20",
-                    hover: "hover:border-amber-300 hover:bg-amber-50/40",
-                    icon: RotateCcw,
-                  },
-                  {
-                    key: "SUPPLIER_REFUND",
-                    label: "Supplier Refund",
-                    sub: "Money In · Debit Recovery",
-                    color: "border-purple-500 bg-purple-50 text-purple-900 ring-2 ring-purple-500/20",
-                    hover: "hover:border-purple-300 hover:bg-purple-50/40",
-                    icon: CornerDownLeft,
-                  },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  const isSelected = direction === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => {
-                        setDirection(item.key);
-                        setPartyId("");
-                        setPartySearch("");
-                        setTargetId("");
-                        setAllocationAmount("");
-                      }}
-                      className={`flex flex-col items-start rounded-xl border p-3 text-left transition-all ${
-                        isSelected ? item.color : `border-slate-200 bg-white text-slate-700 ${item.hover}`
-                      }`}
-                    >
-                      <div className="flex w-full items-center justify-between">
-                        <Icon className="h-4 w-4" />
-                        {isSelected && <span className="h-2 w-2 rounded-full bg-current" />}
-                      </div>
-                      <span className="mt-2 text-xs font-bold">{item.label}</span>
-                      <span className="text-[10px] opacity-75">{item.sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Accounting Impact Helper */}
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-[11px] text-slate-600 border border-slate-200/70">
-                <Info className="h-3.5 w-3.5 flex-shrink-0 text-blue-600" />
-                <span>
-                  <b>GL Impact:</b>{" "}
-                  {direction === "CUSTOMER_RECEIPT"
-                    ? "Debit Cash / Bank Account (Asset Inflow) · Credit Customer Control Account (AR Reduced)."
-                    : direction === "SUPPLIER_PAYMENT"
-                    ? "Debit Supplier Control Account (AP Reduced) · Credit Cash / Bank Account (Asset Outflow)."
-                    : direction === "CUSTOMER_REFUND"
-                    ? "Debit Customer Control Account (AR Increased) · Credit Cash / Bank Account (Asset Outflow)."
-                    : "Debit Cash / Bank Account (Asset Inflow) · Credit Supplier Control Account (AP Increased)."}
-                </span>
+            {/* Direction Selector Tabs */}
+            <div className="border-b border-slate-200 bg-slate-50/90 px-6 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex rounded-xl bg-slate-200/70 p-1 text-xs font-semibold text-slate-700">
+                  {[
+                    { key: "CUSTOMER_RECEIPT", label: "Customer Receipt", icon: ArrowDownLeft, activeTone: "bg-white text-emerald-800 shadow-xs font-bold" },
+                    { key: "SUPPLIER_PAYMENT", label: "Supplier Payment", icon: ArrowUpRight, activeTone: "bg-white text-blue-800 shadow-xs font-bold" },
+                    { key: "CUSTOMER_REFUND", label: "Customer Refund", icon: RotateCcw, activeTone: "bg-white text-amber-800 shadow-xs font-bold" },
+                    { key: "SUPPLIER_REFUND", label: "Supplier Refund", icon: CornerDownLeft, activeTone: "bg-white text-purple-800 shadow-xs font-bold" },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    const isSelected = direction === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => {
+                          setDirection(item.key);
+                          setPartyId("");
+                          setPartySearch("");
+                          setTargetId("");
+                          setAllocationAmount("");
+                          setDocAllocations({});
+                        }}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
+                          isSelected
+                            ? item.activeTone
+                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                    direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-blue-100 text-blue-800"
+                  }`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                    {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND" ? "Asset Inflow · DR Cash/Bank" : "Asset Outflow · CR Cash/Bank"}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1759,18 +1744,17 @@ export function PaymentRegister({
                   </div>
 
                   {/* Payment Instrument & Settlement Source */}
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                      Settlement Source & Instrument
+                  <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-4">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2.5">
+                      Settlement Method & Account *
                     </span>
 
-                    {/* Instrument Selector Cards */}
-                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 mb-3">
+                    {/* Method Selector Tabs */}
+                    <div className="grid grid-cols-3 gap-2 mb-3">
                       {[
-                        { id: "CASH", label: "Cash Drawer", icon: Banknote },
-                        { id: "BANK_TRANSFER", label: "Bank Remittance", icon: Landmark },
-                        { id: "CHEQUE", label: "Cheque", icon: CreditCard },
-                        { id: "MOBILE_WALLET", label: "Mobile Wallet", icon: Wallet },
+                        { id: "CASH", label: "Cash Drawer", icon: Banknote, filter: "CASH" },
+                        { id: "BANK_TRANSFER", label: "Bank Account", icon: Landmark, filter: "BANK" },
+                        { id: "CHEQUE", label: "Cheque / Draft", icon: CreditCard, filter: "BANK" },
                       ].map((item) => {
                         const Icon = item.icon;
                         const isSelected = paymentInstrument === item.id;
@@ -1780,73 +1764,36 @@ export function PaymentRegister({
                             type="button"
                             onClick={() => {
                               setPaymentInstrument(item.id as any);
-                              if (item.id === "CASH") {
-                                setSettlementFilter("CASH");
+                              setSettlementFilter(item.filter as any);
+                              if (item.filter === "CASH") {
                                 const cashAcc = accounts.find((a) => a.type === "cash");
                                 if (cashAcc) setAccountChoice(cashAcc.value);
                               } else {
-                                setSettlementFilter("BANK");
                                 const bankAcc = accounts.find((a) => a.type === "bank");
                                 if (bankAcc) setAccountChoice(bankAcc.value);
                               }
                             }}
-                            className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center transition ${
+                            className={`flex items-center justify-center gap-2 rounded-xl border py-2.5 px-3 text-xs font-bold transition ${
                               isSelected
-                                ? "border-blue-600 bg-blue-50 text-blue-950 ring-1 ring-blue-500 font-bold"
-                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                ? "border-blue-600 bg-blue-50/80 text-blue-900 shadow-xs ring-1 ring-blue-500"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100/70"
                             }`}
                           >
-                            <Icon className="h-4 w-4 mb-1" />
-                            <span className="text-[11px]">{item.label}</span>
+                            <Icon className="h-4 w-4" />
+                            <span>{item.label}</span>
                           </button>
                         );
                       })}
                     </div>
 
-                    {/* Settlement Account (Cash vs Bank) */}
+                    {/* Account Picker */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="field-label mb-0">Settlement GL Account *</label>
-                        <div className="flex gap-1 text-[11px]">
-                          <button
-                            type="button"
-                            onClick={() => setSettlementFilter("ALL")}
-                            className={`rounded px-2 py-0.5 font-semibold ${
-                              settlementFilter === "ALL"
-                                ? "bg-slate-900 text-white"
-                                : "text-slate-500 hover:text-slate-800"
-                            }`}
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSettlementFilter("CASH")}
-                            className={`rounded px-2 py-0.5 font-semibold ${
-                              settlementFilter === "CASH"
-                                ? "bg-emerald-600 text-white"
-                                : "text-slate-500 hover:text-slate-800"
-                            }`}
-                          >
-                            Cash
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSettlementFilter("BANK")}
-                            className={`rounded px-2 py-0.5 font-semibold ${
-                              settlementFilter === "BANK"
-                                ? "bg-blue-600 text-white"
-                                : "text-slate-500 hover:text-slate-800"
-                            }`}
-                          >
-                            Bank
-                          </button>
-                        </div>
-                      </div>
-
+                      <label className="field-label mb-1">
+                        {paymentInstrument === "CASH" ? "Cash Drawer Account *" : "Bank GL Account *"}
+                      </label>
                       <select
                         required
-                        className="field-input font-mono"
+                        className="field-input font-mono font-medium"
                         value={accountChoice}
                         onChange={(e) => setAccountChoice(e.target.value)}
                       >

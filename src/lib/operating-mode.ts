@@ -15,12 +15,12 @@ export type OperatingModeConfig = {
 };
 
 const DEFAULT_CONFIG: OperatingModeConfig = {
-  mode: "MULTI_USER",
-  description: "Enterprise multi-user operating mode with role-based segregation of duties and approval workflows.",
+  mode: "SINGLE_USER",
+  description: "Single-operator mode: Direct processing without maker-checker delays. Same strict inventory and accounting validation.",
   updatedAt: new Date().toISOString(),
   updatedById: null,
   configuredBy: "System Default",
-  reason: "Initial configuration",
+  reason: "Default configuration for single-operator business",
 };
 
 /**
@@ -49,7 +49,7 @@ export async function getOperatingModeConfig(
   }
 
   const val = setting.value as Partial<OperatingModeConfig>;
-  const mode: OperatingMode = val.mode === "SINGLE_USER" ? "SINGLE_USER" : "MULTI_USER";
+  const mode: OperatingMode = val.mode === "MULTI_USER" ? "MULTI_USER" : "SINGLE_USER";
 
   return {
     mode,
