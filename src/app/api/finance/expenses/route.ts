@@ -14,6 +14,11 @@ const expenseInputSchema = z.object({
   amount: z.string().min(1, "Amount is required"),
   taxAmount: z.string().optional().default("0"),
   taxAccountId: z.string().uuid().optional().nullable(),
+  taxType: z.enum(["WITHHOLDING", "INPUT_TAX"]).optional().default("WITHHOLDING"),
+  costCenter: z.string().max(100).optional().default("Operations"),
+  paymentMethod: z.string().max(50).optional().default("CASH"),
+  chequeNumber: z.string().max(50).optional().default(""),
+  chequeDate: z.string().optional().default(""),
   payee: z.string().max(200).optional().default(""),
   referenceDocument: z.string().max(100).optional().default(""),
   category: z.string().max(100).optional().default("General"),
@@ -38,8 +43,8 @@ export async function GET(request: Request) {
 
     const companyId = context.company.id;
 
-    // Fetch expense vouchers
-    const [expenses, expenseAccounts, cashAccounts, bankAccounts, branches] = await Promise.all([
+    // Fetch expense vouchers and masters
+    const [expenses, expenseAccounts, cashAccounts, bankAccounts, branches, taxAccounts] = await Promise.all([
       prisma.journalEntry.findMany({
         where: {
           companyId,
@@ -112,6 +117,20 @@ export async function GET(request: Request) {
         select: { id: true, code: true, name: true },
         orderBy: { code: "asc" },
       }),
+
+      // Available active tax & withholding accounts
+      prisma.account.findMany({
+        where: {
+          companyId,
+          isActive: true,
+          OR: [
+            { accountClass: AccountClass.LIABILITY },
+            { accountClass: AccountClass.ASSET, name: { contains: "Tax", mode: "insensitive" } },
+          ],
+        },
+        select: { id: true, code: true, name: true, accountClass: true, accountType: true },
+        orderBy: { code: "asc" },
+      }),
     ]);
 
     // Compute KPI summaries
@@ -142,6 +161,7 @@ export async function GET(request: Request) {
           cashAccounts,
           bankAccounts,
           branches,
+          taxAccounts,
         },
       },
     });
@@ -173,31 +193,66 @@ export async function POST(request: Request) {
     const netAmount = (amountNum - taxNum).toFixed(4);
     const totalAmount = amountNum.toFixed(4);
 
-    // Build balanced lines
-    const lines = [
-      {
-        accountId: parsed.expenseAccountId,
-        description: `${parsed.payee ? parsed.payee + ": " : ""}${parsed.narration}`,
-        debit: netAmount,
-        credit: "0",
-      },
-    ];
+    // Build balanced double-entry lines
+    const lines: Array<{ accountId: string; description: string; debit: string; credit: string }> = [];
 
     if (taxNum > 0 && parsed.taxAccountId) {
+      if (parsed.taxType === "INPUT_TAX") {
+        // Input VAT: Net expense + Input Tax Asset = Total Cash Outflow
+        lines.push({
+          accountId: parsed.expenseAccountId,
+          description: `${parsed.payee ? parsed.payee + ": " : ""}${parsed.narration} [${parsed.costCenter}]`,
+          debit: netAmount,
+          credit: "0",
+        });
+        lines.push({
+          accountId: parsed.taxAccountId,
+          description: `Input Tax on ${parsed.narration}`,
+          debit: taxNum.toFixed(4),
+          credit: "0",
+        });
+        lines.push({
+          accountId: parsed.settlementAccountId,
+          description: `Settlement for ${parsed.narration} via ${parsed.paymentMethod}${parsed.chequeNumber ? ` (Chq #${parsed.chequeNumber})` : ""}`,
+          debit: "0",
+          credit: totalAmount,
+        });
+      } else {
+        // Withholding Tax (WHT): Gross Incurred Expense = WHT Liability Retained + Net Disbursed Outflow
+        lines.push({
+          accountId: parsed.expenseAccountId,
+          description: `${parsed.payee ? parsed.payee + ": " : ""}${parsed.narration} [${parsed.costCenter}]`,
+          debit: totalAmount,
+          credit: "0",
+        });
+        lines.push({
+          accountId: parsed.taxAccountId,
+          description: `WHT Retained on ${parsed.narration} (${parsed.payee || "Payee"})`,
+          debit: "0",
+          credit: taxNum.toFixed(4),
+        });
+        lines.push({
+          accountId: parsed.settlementAccountId,
+          description: `Net Settlement for ${parsed.narration} via ${parsed.paymentMethod}${parsed.chequeNumber ? ` (Chq #${parsed.chequeNumber})` : ""}`,
+          debit: "0",
+          credit: netAmount,
+        });
+      }
+    } else {
+      // Standard zero-tax expense
       lines.push({
-        accountId: parsed.taxAccountId,
-        description: `Input Tax on ${parsed.narration}`,
-        debit: taxNum.toFixed(4),
+        accountId: parsed.expenseAccountId,
+        description: `${parsed.payee ? parsed.payee + ": " : ""}${parsed.narration} [${parsed.costCenter}]`,
+        debit: totalAmount,
         credit: "0",
       });
+      lines.push({
+        accountId: parsed.settlementAccountId,
+        description: `Settlement for ${parsed.narration} via ${parsed.paymentMethod}${parsed.chequeNumber ? ` (Chq #${parsed.chequeNumber})` : ""}`,
+        debit: "0",
+        credit: totalAmount,
+      });
     }
-
-    lines.push({
-      accountId: parsed.settlementAccountId,
-      description: `Settlement for ${parsed.narration}`,
-      debit: "0",
-      credit: totalAmount,
-    });
 
     const actor = {
       companyId: context.company.id,
@@ -211,7 +266,7 @@ export async function POST(request: Request) {
       postingDate: parsed.postingDate,
       voucherType: JournalType.GENERAL,
       sourceModule: "EXPENSE",
-      narration: `[${parsed.category}] ${parsed.payee ? parsed.payee + " - " : ""}${parsed.narration}`,
+      narration: `[${parsed.category} · ${parsed.costCenter}] ${parsed.payee ? parsed.payee + " - " : ""}${parsed.narration}${parsed.chequeNumber ? ` (Chq #${parsed.chequeNumber})` : ""}`,
       referenceDocument: parsed.referenceDocument || null,
       lines,
     });

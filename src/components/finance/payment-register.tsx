@@ -22,6 +22,7 @@ import {
   FileText,
   Filter,
   Info,
+  Landmark,
   Layers,
   Loader2,
   Printer,
@@ -116,6 +117,11 @@ export function PaymentRegister({
   const [partyId, setPartyId] = useState("");
   const [partySearch, setPartySearch] = useState("");
   const [settlementFilter, setSettlementFilter] = useState<"ALL" | "CASH" | "BANK">("ALL");
+  const [paymentInstrument, setPaymentInstrument] = useState<"CASH" | "BANK_TRANSFER" | "CHEQUE" | "MOBILE_WALLET">("CASH");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [chequeBank, setChequeBank] = useState("");
+  const [cashTendered, setCashTendered] = useState("");
   const [isPostingDirect, setIsPostingDirect] = useState(false);
   const [accountChoice, setAccountChoice] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -124,10 +130,75 @@ export function PaymentRegister({
   const [notes, setNotes] = useState("");
   const [targetId, setTargetId] = useState("");
   const [allocationAmount, setAllocationAmount] = useState("");
+  const [docAllocations, setDocAllocations] = useState<Record<string, string>>({});
   const prefillApplied = useRef(false);
 
   const can = (key: string) => permissions.includes(key);
   const isCustomer = direction.startsWith("CUSTOMER");
+
+  const totalAllocated = useMemo(() => {
+    return Object.values(docAllocations).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+  }, [docAllocations]);
+
+  const advanceOnLedger = useMemo(() => {
+    const amt = parseFloat(amount) || 0;
+    return Math.max(0, amt - totalAllocated);
+  }, [amount, totalAllocated]);
+
+  const tenderedNum = parseFloat(cashTendered) || 0;
+  const enteredAmountNum = parseFloat(amount) || 0;
+  const changeToReturn = useMemo(() => {
+    if (tenderedNum <= 0 || enteredAmountNum <= 0) return 0;
+    return Math.max(0, tenderedNum - enteredAmountNum);
+  }, [tenderedNum, enteredAmountNum]);
+
+  function handleAutoAllocateFIFO() {
+    const totalEntered = parseFloat(amount) || 0;
+    if (totalEntered <= 0) {
+      toast.error("Please enter a payment amount first to run FIFO allocation.");
+      return;
+    }
+    let remaining = totalEntered;
+    const newAlloc: Record<string, string> = {};
+    const sorted = [...targets].sort(
+      (a, b) => new Date(a.invoiceDate || a.receiptDate).getTime() - new Date(b.invoiceDate || b.receiptDate).getTime()
+    );
+    for (const doc of sorted) {
+      if (remaining <= 0) break;
+      const docTotal = Number(doc.grandTotal) || 0;
+      const alloc = Math.min(remaining, docTotal);
+      if (alloc > 0) {
+        newAlloc[doc.id] = alloc.toFixed(2);
+        remaining -= alloc;
+      }
+    }
+    setDocAllocations(newAlloc);
+    toast.success(
+      `Allocated ${formatMoney(totalEntered - remaining, currency)} across ${
+        Object.keys(newAlloc).length
+      } document(s) using FIFO!`
+    );
+  }
+
+  function handleMatchAllDocs() {
+    let grandSum = 0;
+    const newAlloc: Record<string, string> = {};
+    targets.forEach((doc: any) => {
+      const val = Number(doc.grandTotal) || 0;
+      grandSum += val;
+      newAlloc[doc.id] = val.toFixed(2);
+    });
+    setDocAllocations(newAlloc);
+    setAmount(grandSum.toFixed(2));
+    toast.success(`Matched all ${targets.length} open documents (Total: ${formatMoney(grandSum, currency)})`);
+  }
+
+  function handleClearAllocations() {
+    setDocAllocations({});
+    setTargetId("");
+    setAllocationAmount("");
+    toast.info("Allocations cleared. Entire amount will post as an on-account advance.");
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,7 +255,19 @@ export function PaymentRegister({
     void load();
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search);
-      if (p.get("new") === "1" && permissions.includes("PAYMENT_CREATE")) {
+      if ((p.get("new") === "1" || p.get("action") === "new") && permissions.includes("PAYMENT_CREATE")) {
+        const dir = p.get("direction");
+        if (dir && ["CUSTOMER_RECEIPT", "SUPPLIER_PAYMENT", "CUSTOMER_REFUND", "SUPPLIER_REFUND"].includes(dir)) {
+          setDirection(dir);
+        }
+        const pid = p.get("partyId") || p.get("customerId") || p.get("supplierId");
+        if (pid) {
+          setPartyId(pid);
+        }
+        const amt = p.get("amount");
+        if (amt) {
+          setAmount(amt);
+        }
         setOpen(true);
       }
     }
@@ -348,14 +431,42 @@ export function PaymentRegister({
     setSaving(true);
     if (andPost) setIsPostingDirect(true);
     const [kind, accountId] = accountChoice.split(":");
-    const allocation =
-      targetId && allocationAmount
-        ? {
-            salesInvoiceId: isCustomer ? targetId : null,
-            purchaseReceiptId: isCustomer ? null : targetId,
-            amount: allocationAmount,
-          }
-        : null;
+    const multiAllocations = Object.entries(docAllocations)
+      .filter(([_, val]) => (parseFloat(val) || 0) > 0)
+      .map(([docId, val]) => ({
+        salesInvoiceId: isCustomer ? docId : null,
+        purchaseReceiptId: isCustomer ? null : docId,
+        amount: String(parseFloat(val)),
+      }));
+
+    const finalAllocations =
+      multiAllocations.length > 0
+        ? multiAllocations
+        : targetId && allocationAmount
+        ? [
+            {
+              salesInvoiceId: isCustomer ? targetId : null,
+              purchaseReceiptId: isCustomer ? null : targetId,
+              amount: allocationAmount,
+            },
+          ]
+        : [];
+
+    const effectiveReference =
+      reference ||
+      (paymentInstrument === "CHEQUE" && chequeNumber
+        ? `Cheque #${chequeNumber}${chequeBank ? ` (${chequeBank})` : ""}`
+        : null);
+
+    const effectiveNotes = [
+      notes,
+      paymentInstrument === "CHEQUE" && chequeDate ? `Cheque Date: ${chequeDate}` : null,
+      paymentInstrument === "CASH" && cashTendered
+        ? `Cash Tendered: ${formatMoney(cashTendered, currency)}, Change Return: ${formatMoney(changeToReturn, currency)}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
 
     try {
       const response = await fetch("/api/payments", {
@@ -371,10 +482,10 @@ export function PaymentRegister({
           direction,
           currencyCode: currency,
           amount,
-          reference: reference || null,
-          notes: notes || null,
+          reference: effectiveReference,
+          notes: effectiveNotes,
           idempotencyKey: crypto.randomUUID(),
-          allocations: allocation ? [allocation] : [],
+          allocations: finalAllocations,
         }),
       });
 
@@ -425,6 +536,11 @@ export function PaymentRegister({
     setTargetId("");
     setAmount("");
     setAllocationAmount("");
+    setDocAllocations({});
+    setCashTendered("");
+    setChequeNumber("");
+    setChequeDate("");
+    setChequeBank("");
     setReference("");
     setNotes("");
   }
@@ -1261,10 +1377,10 @@ export function PaymentRegister({
                 <div className="space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
-                      Operating Branch
+                      Operating Branch *
                       <select
                         required
-                        className="field-input"
+                        className="field-input mt-1"
                         value={branchId}
                         onChange={(e) => setBranchId(e.target.value)}
                       >
@@ -1276,22 +1392,45 @@ export function PaymentRegister({
                       </select>
                     </label>
 
-                    <label className="field-label">
-                      Voucher Date
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="field-label mb-0">Voucher Date *</label>
+                        <div className="flex gap-1 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setDate(new Date().toISOString().slice(0, 10))}
+                            className="text-blue-600 hover:underline"
+                          >
+                            Today
+                          </button>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              d.setDate(d.getDate() - 1);
+                              setDate(d.toISOString().slice(0, 10));
+                            }}
+                            className="text-slate-500 hover:underline"
+                          >
+                            Yesterday
+                          </button>
+                        </div>
+                      </div>
                       <input
                         required
                         type="date"
-                        className="field-input"
+                        className="field-input mt-1"
                         value={date}
                         onChange={(e) => setDate(e.target.value)}
                       />
-                    </label>
+                    </div>
                   </div>
 
                   {/* Counterparty Selection */}
                   <div>
                     <label className="field-label">
-                      {isCustomer ? "Customer / Dealer" : "Vendor / Supplier"}
+                      {isCustomer ? "Customer / Dealer (AR)" : "Vendor / Supplier (AP)"} *
                       <div className="relative mt-1">
                         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                         <input
@@ -1310,6 +1449,7 @@ export function PaymentRegister({
                           setPartyId(e.target.value);
                           setTargetId("");
                           setAllocationAmount("");
+                          setDocAllocations({});
                         }}
                       >
                         <option value="">Select {isCustomer ? "customer" : "supplier"}...</option>
@@ -1321,14 +1461,15 @@ export function PaymentRegister({
                       </select>
                     </label>
 
-                    {/* Selected Party Summary Card */}
+                    {/* Counterparty Financial Dossier Card */}
                     {selectedParty && (
-                      <div className="mt-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-950">
+                      <div className="mt-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-3.5 text-xs text-blue-950 shadow-xs">
                         <div className="flex items-start justify-between">
                           <div>
-                            <span className="font-bold">{selectedParty.name}</span>
-                            <span className="block text-[11px] text-blue-700">
-                              Code: {selectedParty.code}
+                            <span className="font-bold text-sm block text-slate-900">{selectedParty.name}</span>
+                            <span className="block text-[11px] text-blue-700 font-mono mt-0.5">
+                              Code: <b>{selectedParty.code}</b>
+                              {selectedParty.phone ? ` · Ph: ${selectedParty.phone}` : ""}
                               {selectedParty.paymentTermsDays
                                 ? ` · Terms: ${selectedParty.paymentTermsDays} days`
                                 : " · Terms: Due on Receipt"}
@@ -1338,79 +1479,226 @@ export function PaymentRegister({
                             href={`/finance/subledgers/${isCustomer ? "customer" : "supplier"}/${selectedParty.id}/print`}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 text-[10px] font-bold text-blue-700 shadow-sm border border-blue-200 hover:bg-blue-100"
+                            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-blue-700 shadow-xs border border-blue-200 hover:bg-blue-100"
                             title="Print Subledger Statement"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Statement
                           </Link>
                         </div>
-                        {selectedParty.creditLimit ? (
-                          <span className="mt-1 block text-[11px] text-blue-800">
-                            Credit Limit: <b>{formatMoney(selectedParty.creditLimit, currency)}</b>
-                          </span>
-                        ) : null}
+                        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-blue-200/60 pt-2 text-[11px]">
+                          <div>
+                            <span className="text-slate-500 block">Credit Limit:</span>
+                            <span className="font-bold text-blue-950 font-mono">
+                              {selectedParty.creditLimit
+                                ? formatMoney(selectedParty.creditLimit, currency)
+                                : "Not Set (Unlimited)"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">Open Pending Docs:</span>
+                            <span className="font-bold text-blue-950 font-mono">
+                              {targets.length} {isCustomer ? "sales invoice(s)" : "bill(s)"}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Settlement Account (Cash vs Bank) */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="field-label mb-0">Settlement Account</label>
-                      <div className="flex gap-1 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => setSettlementFilter("ALL")}
-                          className={`rounded px-2 py-0.5 font-semibold ${
-                            settlementFilter === "ALL"
-                              ? "bg-slate-900 text-white"
-                              : "text-slate-500 hover:text-slate-800"
-                          }`}
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSettlementFilter("CASH")}
-                          className={`rounded px-2 py-0.5 font-semibold ${
-                            settlementFilter === "CASH"
-                              ? "bg-emerald-600 text-white"
-                              : "text-slate-500 hover:text-slate-800"
-                          }`}
-                        >
-                          Cash
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSettlementFilter("BANK")}
-                          className={`rounded px-2 py-0.5 font-semibold ${
-                            settlementFilter === "BANK"
-                              ? "bg-blue-600 text-white"
-                              : "text-slate-500 hover:text-slate-800"
-                          }`}
-                        >
-                          Bank
-                        </button>
-                      </div>
+                  {/* Payment Instrument & Settlement Source */}
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
+                      Settlement Source & Instrument
+                    </span>
+
+                    {/* Instrument Selector Cards */}
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 mb-3">
+                      {[
+                        { id: "CASH", label: "Cash Drawer", icon: Banknote },
+                        { id: "BANK_TRANSFER", label: "Bank Remittance", icon: Landmark },
+                        { id: "CHEQUE", label: "Cheque", icon: CreditCard },
+                        { id: "MOBILE_WALLET", label: "Mobile Wallet", icon: Wallet },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        const isSelected = paymentInstrument === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setPaymentInstrument(item.id as any);
+                              if (item.id === "CASH") {
+                                setSettlementFilter("CASH");
+                                const cashAcc = accounts.find((a) => a.type === "cash");
+                                if (cashAcc) setAccountChoice(cashAcc.value);
+                              } else {
+                                setSettlementFilter("BANK");
+                                const bankAcc = accounts.find((a) => a.type === "bank");
+                                if (bankAcc) setAccountChoice(bankAcc.value);
+                              }
+                            }}
+                            className={`flex flex-col items-center justify-center rounded-lg border p-2 text-center transition ${
+                              isSelected
+                                ? "border-blue-600 bg-blue-50 text-blue-950 ring-1 ring-blue-500 font-bold"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4 mb-1" />
+                            <span className="text-[11px]">{item.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
 
-                    <select
-                      required
-                      className="field-input"
-                      value={accountChoice}
-                      onChange={(e) => setAccountChoice(e.target.value)}
-                    >
-                      {filteredAccounts.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.type === "bank" ? "🏦 " : "💵 "}
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="mt-1 block text-[10px] text-slate-400">
-                      Select either the shop Cash Drawer or the receiving/disbursing Bank Account.
-                    </span>
+                    {/* Settlement Account (Cash vs Bank) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="field-label mb-0">Settlement GL Account *</label>
+                        <div className="flex gap-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setSettlementFilter("ALL")}
+                            className={`rounded px-2 py-0.5 font-semibold ${
+                              settlementFilter === "ALL"
+                                ? "bg-slate-900 text-white"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSettlementFilter("CASH")}
+                            className={`rounded px-2 py-0.5 font-semibold ${
+                              settlementFilter === "CASH"
+                                ? "bg-emerald-600 text-white"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Cash
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSettlementFilter("BANK")}
+                            className={`rounded px-2 py-0.5 font-semibold ${
+                              settlementFilter === "BANK"
+                                ? "bg-blue-600 text-white"
+                                : "text-slate-500 hover:text-slate-800"
+                            }`}
+                          >
+                            Bank
+                          </button>
+                        </div>
+                      </div>
+
+                      <select
+                        required
+                        className="field-input font-mono"
+                        value={accountChoice}
+                        onChange={(e) => setAccountChoice(e.target.value)}
+                      >
+                        {filteredAccounts.map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.type === "bank" ? "🏦 " : "💵 "}
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Conditional Cheque Details */}
+                    {paymentInstrument === "CHEQUE" && (
+                      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-3 rounded-lg bg-amber-50/70 border border-amber-200/80 p-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-950">Cheque / Draft # *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. CHQ-994821"
+                            value={chequeNumber}
+                            onChange={(e) => setChequeNumber(e.target.value)}
+                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs font-mono font-bold text-slate-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-950">Cheque Date *</label>
+                          <input
+                            type="date"
+                            value={chequeDate || date}
+                            onChange={(e) => setChequeDate(e.target.value)}
+                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-950">Drawn On Bank</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Meezan, HBL"
+                            value={chequeBank}
+                            onChange={(e) => setChequeBank(e.target.value)}
+                            className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-slate-900 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cash Counter Calculator */}
+                    {accountChoice.startsWith("cash") && (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 shadow-xs">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                            <Banknote className="h-3.5 w-3.5" /> Cash Drawer Tender Calculator
+                          </span>
+                          <span className="text-[10px] text-emerald-600 font-mono">Counter Change Helper</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-emerald-900 mb-0.5">
+                              Cash Received / Tendered ({currency}):
+                            </label>
+                            <input
+                              type="number"
+                              step="1"
+                              placeholder="0.00"
+                              value={cashTendered}
+                              onChange={(e) => setCashTendered(e.target.value)}
+                              className="h-8 w-full rounded-lg border border-emerald-300 bg-white px-2.5 text-xs font-mono font-bold text-emerald-950 focus:outline-none"
+                            />
+                            {/* Quick note buttons */}
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setCashTendered(amount)}
+                                className="rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                              >
+                                Exact
+                              </button>
+                              {[500, 1000, 5000].map((val) => (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  onClick={() =>
+                                    setCashTendered(String((parseFloat(cashTendered) || 0) + val))
+                                  }
+                                  className="rounded bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 border border-emerald-200 hover:bg-emerald-100"
+                                >
+                                  +{val}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg bg-emerald-100/80 p-2.5 text-right border border-emerald-200">
+                            <span className="block text-[10px] font-semibold uppercase tracking-wider text-emerald-800">
+                              Change To Return
+                            </span>
+                            <span className="font-mono font-black text-base text-emerald-950">
+                              {formatMoney(changeToReturn, currency)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1418,7 +1706,7 @@ export function PaymentRegister({
                 <div className="space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
-                      Payment Amount ({currency})
+                      Payment Amount ({currency}) *
                       <div className="relative mt-1">
                         <span className="pointer-events-none absolute left-3 top-2 text-xs font-bold text-slate-400">
                           {currency}
@@ -1429,7 +1717,7 @@ export function PaymentRegister({
                           step="0.01"
                           min="0.01"
                           placeholder="0.00"
-                          className="h-10 w-full rounded-lg border border-slate-200 pl-12 pr-3 text-sm font-mono font-bold text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="h-10 w-full rounded-lg border border-slate-200 pl-12 pr-3 text-base font-mono font-bold text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                         />
@@ -1437,7 +1725,7 @@ export function PaymentRegister({
                     </label>
 
                     <label className="field-label">
-                      Reference / Cheque #
+                      Reference / Instrument #
                       <input
                         className="field-input mt-1"
                         value={reference}
@@ -1451,80 +1739,130 @@ export function PaymentRegister({
                     </label>
                   </div>
 
-                  {/* Document Allocation (Matching Open Invoices / Bills) */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                    <div className="mb-2 flex items-center justify-between">
+                  {/* Multi-Document Allocation Engine */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-xs">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <FileText className="h-4 w-4 text-slate-700" />
                         <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                          Invoice / Bill Matching
+                          Invoice / Bill Matching Engine
                         </span>
                         {targets.length > 0 && (
                           <Badge tone="blue">{targets.length} open</Badge>
                         )}
                       </div>
-                      {targetId && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTargetId("");
-                            setAllocationAmount("");
-                          }}
-                          className="text-[11px] font-semibold text-rose-600 hover:underline"
-                        >
-                          Clear Allocation (Advance)
-                        </button>
+
+                      {/* Engine Toolbar */}
+                      {targets.length > 0 && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={handleAutoAllocateFIFO}
+                            className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-blue-700 shadow-xs"
+                            title="Automatically distribute entered amount across open documents chronologically"
+                          >
+                            <Zap className="h-3 w-3" />
+                            ⚡ Auto-Allocate FIFO
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleMatchAllDocs}
+                            className="rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            Match All
+                          </button>
+                          {(Object.keys(docAllocations).length > 0 || targetId) && (
+                            <button
+                              type="button"
+                              onClick={handleClearAllocations}
+                              className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-rose-600 hover:underline"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
                     {targets.length > 0 ? (
                       <div className="space-y-2">
                         <p className="text-[11px] text-slate-500">
-                          Match payment against a posted invoice or receipt to clear outstanding balance:
+                          Allocate payment against posted documents to knock off subledger balances:
                         </p>
-                        <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                        <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b">
+                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 border-b sticky top-0">
                               <tr>
                                 <th className="px-3 py-1.5">Document #</th>
                                 <th className="px-2 py-1.5">Date</th>
-                                <th className="px-2 py-1.5 text-right">Total</th>
+                                <th className="px-2 py-1.5 text-right">Total Due</th>
+                                <th className="px-2 py-1.5 text-right w-28">Allocated</th>
                                 <th className="px-3 py-1.5 text-right">Action</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-100 font-mono text-xs">
                               {targets.map((item: any) => {
-                                const isMatched = targetId === item.id;
+                                const currentAlloc = docAllocations[item.id] || (targetId === item.id ? allocationAmount : "");
+                                const isMatched = (parseFloat(currentAlloc) || 0) > 0;
                                 const docNum = item.invoiceNumber || item.receiptNumber;
                                 const docDate = item.invoiceDate || item.receiptDate;
+                                const grandTotalStr = String(item.grandTotal);
+
                                 return (
                                   <tr
                                     key={item.id}
                                     className={`hover:bg-slate-50 ${isMatched ? "bg-blue-50/60 font-semibold" : ""}`}
                                   >
-                                    <td className="px-3 py-2 text-slate-900">{docNum}</td>
+                                    <td className="px-3 py-2 text-slate-900 font-sans">{docNum}</td>
                                     <td className="px-2 py-2 text-slate-500">{formatDate(docDate)}</td>
-                                    <td className="px-2 py-2 text-right font-mono font-medium">
+                                    <td className="px-2 py-2 text-right text-slate-800">
                                       {formatMoney(item.grandTotal, currency)}
+                                    </td>
+                                    <td className="px-2 py-1 text-right">
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        max={item.grandTotal}
+                                        value={currentAlloc}
+                                        placeholder="0.00"
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setDocAllocations((prev) => ({
+                                            ...prev,
+                                            [item.id]: val,
+                                          }));
+                                        }}
+                                        className="h-7 w-24 rounded border border-slate-200 px-1.5 text-right text-xs font-bold font-mono text-blue-950 focus:border-blue-500"
+                                      />
                                     </td>
                                     <td className="px-3 py-2 text-right">
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          setTargetId(item.id);
-                                          const grandTotalStr = String(item.grandTotal);
-                                          setAllocationAmount(grandTotalStr);
-                                          if (!amount || Number(amount) <= 0) {
-                                            setAmount(grandTotalStr);
+                                          if (isMatched) {
+                                            setDocAllocations((prev) => {
+                                              const next = { ...prev };
+                                              delete next[item.id];
+                                              return next;
+                                            });
+                                          } else {
+                                            setDocAllocations((prev) => ({
+                                              ...prev,
+                                              [item.id]: grandTotalStr,
+                                            }));
+                                            if (!amount || Number(amount) <= 0) {
+                                              setAmount(grandTotalStr);
+                                            }
                                           }
                                         }}
-                                        className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                                        className={`rounded px-2 py-0.5 text-[10px] font-sans font-bold transition ${
                                           isMatched
-                                            ? "bg-blue-600 text-white"
+                                            ? "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
                                             : "border border-slate-200 text-slate-600 hover:bg-slate-100"
                                         }`}
                                       >
-                                        {isMatched ? "Matched" : "Match Full"}
+                                        {isMatched ? "Clear" : "Match Full"}
                                       </button>
                                     </td>
                                   </tr>
@@ -1533,21 +1871,6 @@ export function PaymentRegister({
                             </tbody>
                           </table>
                         </div>
-
-                        {/* Amount Allocated Input */}
-                        {targetId && (
-                          <div className="mt-2 flex items-center justify-between rounded-lg bg-blue-50/60 p-2.5 border border-blue-100 text-xs">
-                            <span className="text-blue-900">Amount to Allocate on this Document:</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              className="h-7 w-28 rounded border border-blue-200 bg-white px-2 text-right font-mono font-bold text-blue-950"
-                              value={allocationAmount}
-                              onChange={(e) => setAllocationAmount(e.target.value)}
-                            />
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <p className="text-xs text-slate-500 italic">
@@ -1559,21 +1882,59 @@ export function PaymentRegister({
 
                     {/* Live Allocation Summary */}
                     {amount && Number(amount) > 0 && (
-                      <div className="mt-3 flex items-center justify-between border-t border-slate-200/70 pt-2 text-[11px]">
-                        <span className="text-slate-500">
-                          Matched: <b>{formatMoney(allocationAmount || 0, currency)}</b>
+                      <div className="mt-3 flex items-center justify-between border-t border-slate-200/80 pt-2 text-[11px]">
+                        <span className="text-slate-600">
+                          Total Matched: <b>{formatMoney(totalAllocated || allocationAmount || 0, currency)}</b>
                         </span>
-                        <span className="text-slate-700 font-semibold">
+                        <span className="text-slate-800 font-semibold">
                           Advance on Ledger:{" "}
-                          <b>
-                            {formatMoney(
-                              Math.max(0, (Number(amount) || 0) - (Number(allocationAmount) || 0)),
-                              currency
-                            )}
+                          <b className="text-blue-700">
+                            {formatMoney(advanceOnLedger, currency)}
                           </b>
                         </span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Live Double-Entry Balancing Preview */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/90 p-3.5 shadow-xs">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
+                      <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-slate-500">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        Live Double-Entry Balance Preview
+                      </span>
+                      <span className="text-emerald-700 font-semibold text-[11px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                        Balanced (Dr = Cr)
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white font-mono text-xs overflow-hidden">
+                      {/* Debit Line */}
+                      <div className="flex justify-between items-center px-3 py-2 hover:bg-slate-50">
+                        <span className="text-blue-900 font-semibold truncate max-w-[280px]">
+                          <span className="text-emerald-700 font-bold mr-1.5">Dr.</span>
+                          {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
+                            ? accounts.find((a) => a.value === accountChoice)?.label || "Settlement Account"
+                            : `2010 · Accounts Payable (${selectedParty?.name || "Supplier"})`}
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {formatMoney(amount || 0, currency)}
+                        </span>
+                      </div>
+
+                      {/* Credit Line */}
+                      <div className="flex justify-between items-center px-3 py-2 hover:bg-slate-50 pl-6">
+                        <span className="text-slate-700 font-semibold truncate max-w-[280px]">
+                          <span className="text-rose-700 font-bold mr-1.5">Cr.</span>
+                          {direction === "CUSTOMER_RECEIPT" || direction === "SUPPLIER_REFUND"
+                            ? `1020 · Accounts Receivable (${selectedParty?.name || "Customer"})`
+                            : accounts.find((a) => a.value === accountChoice)?.label || "Settlement Account"}
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {formatMoney(amount || 0, currency)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Remarks & Internal Narration */}
@@ -1591,11 +1952,10 @@ export function PaymentRegister({
               </div>
 
               {/* Modal Footer Actions */}
-              <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>Double-entry balanced posting with full audit trail</span>
-                </div>
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/90 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-[11px] text-slate-400">
+                  © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
+                </span>
                 <div className="flex items-center gap-2">
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                     Cancel
@@ -1616,8 +1976,8 @@ export function PaymentRegister({
                     onClick={(e) => void handleCreate(e, true)}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
                   >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {saving && isPostingDirect ? "Posting to GL..." : "Save & Post Voucher"}
+                    <Zap className="h-4 w-4" />
+                    {saving && isPostingDirect ? "Posting to GL..." : "⚡ Save & Post Voucher"}
                   </Button>
                 </div>
               </div>
