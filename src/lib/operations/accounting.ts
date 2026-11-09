@@ -102,12 +102,14 @@ export async function allocateOperationalNumber(
     }),
   ]);
   if (!branch) throw new ApiError(404, "BRANCH_NOT_FOUND", "The selected branch is not available.");
+  const cleanBranch = (branch.documentPrefix || "BR").trim().replace(/-+$/, "");
+  const cleanSuffix = (input.suffix || "DOC").trim().replace(/^-+/, "");
   const number = await nextDocumentNumber(tx, {
     companyId: input.companyId,
     branchId: input.branchId,
     documentType: input.documentType,
     fiscalYear: period.fiscalYear.code,
-    prefix: `${branch.documentPrefix}-${input.suffix}`,
+    prefix: `${cleanBranch}-${cleanSuffix}`,
   });
   return { number, period };
 }

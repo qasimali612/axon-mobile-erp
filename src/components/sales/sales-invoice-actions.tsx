@@ -168,54 +168,17 @@ export function SalesInvoiceWorkflowActions({ invoice, userId, permissions }: Pr
           </Button>
         )}
 
-        {/* Workflow actions */}
+        {/* Cancel draft action */}
         {invoice.status === "DRAFT" && (
-          <>
-            <Button
-              type="button"
-              disabled={acting}
-              variant="outline"
-              onClick={() => void executeAction("submit")}
-              className="gap-1.5 font-semibold"
-            >
-              <Send className="h-4 w-4 text-blue-600" />
-              Submit for Approval
-            </Button>
-            <Button
-              type="button"
-              disabled={acting}
-              variant="outline"
-              onClick={() => setCancelOpen(true)}
-              className="gap-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-rose-200"
-            >
-              <Ban className="h-4 w-4" />
-              Cancel Draft
-            </Button>
-          </>
-        )}
-
-        {invoice.status === "SUBMITTED" && can("SALES_INVOICE_APPROVE") && (
           <Button
             type="button"
             disabled={acting}
             variant="outline"
-            onClick={() => void executeAction("approve")}
-            className="gap-1.5 font-semibold text-blue-700 border-blue-300 hover:bg-blue-50"
+            onClick={() => setCancelOpen(true)}
+            className="gap-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-rose-200"
           >
-            <BadgeCheck className="h-4 w-4 text-blue-600" />
-            Approve Invoice
-          </Button>
-        )}
-
-        {invoice.status === "APPROVED" && can("SALES_INVOICE_POST") && (
-          <Button
-            type="button"
-            disabled={acting}
-            onClick={() => void executeAction("post")}
-            className="gap-1.5 font-bold bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <PackageCheck className="h-4 w-4" />
-            Post Stock &amp; GL
+            <Ban className="h-4 w-4" />
+            Cancel Draft
           </Button>
         )}
       </div>

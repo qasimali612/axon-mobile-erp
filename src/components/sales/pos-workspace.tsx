@@ -18,6 +18,7 @@ import {
   PackageSearch,
   Plus,
   Printer,
+  Receipt,
   ReceiptText,
   RotateCcw,
   Search,
@@ -105,6 +106,26 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [invoice, setInvoice] = useState<{ id: string; invoiceNumber: string; status: string } | null>(null);
+
+  // Parked Sales State
+  const [parkedOpen, setParkedOpen] = useState(false);
+  const [parkedInvoices, setParkedInvoices] = useState<any[]>([]);
+  const [loadingParked, setLoadingParked] = useState(false);
+
+  async function loadParkedSales() {
+    setLoadingParked(true);
+    try {
+      const res = await fetch("/api/sales/invoices?status=DRAFT&limit=20");
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.data) {
+        setParkedInvoices(json.data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingParked(false);
+    }
+  }
 
   // Credit Invoice Advance / Down Payment State
   const [advanceAmount, setAdvanceAmount] = useState("");
@@ -379,93 +400,123 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
       const targetInvoiceId = payload.data.id;
       const invNum = payload.data.invoiceNumber;
 
-      if (submit || postNow) {
-        const submitResponse = await fetch(`/api/sales/invoices/${targetInvoiceId}/submit`, { method: "POST" });
-        const submitPayload = await submitResponse.json();
-        if (!submitResponse.ok) throw new Error(submitPayload.error?.message || "Invoice was saved but could not be submitted.");
-        status = submitPayload.data.status;
-      }
-
       if (postNow) {
-        // Fast-track auto approval and posting for single-user/authorized counter checkout
+        // Fast-track auto posting for counter checkout
         try {
-          const approveResponse = await fetch(`/api/sales/invoices/${targetInvoiceId}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-          const approvePayload = await approveResponse.json();
-          if (approveResponse.ok) {
-            status = approvePayload.data.status;
-            // Now attempt posting to deduct physical inventory and write GL journals
-            const postResponse = await fetch(`/api/sales/invoices/${targetInvoiceId}/post`, { method: "POST" });
-            const postPayload = await postResponse.json();
-            if (postResponse.ok) {
-              status = "POSTED";
-              setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "POSTED" });
+          const postResponse = await fetch(`/api/sales/invoices/${targetInvoiceId}/post`, { method: "POST" });
+          const postPayload = await postResponse.json();
+          if (postResponse.ok) {
+            status = "POSTED";
+            setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "POSTED" });
 
-              // Auto-record customer receipt voucher for advance payment
-              if (saleType === "credit" && advanceNum > 0) {
-                try {
-                  const pmtRes = await fetch("/api/payments", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      branchId,
-                      customerId,
-                      cashAccountId: advanceMethod === "CASH" ? advanceCashAccountId : null,
-                      bankAccountId: advanceMethod === "BANK" ? advanceBankAccountId : null,
-                      paymentDate: invoiceDate,
-                      direction: "CUSTOMER_RECEIPT",
-                      currencyCode: currency,
-                      amount: String(advanceNum),
-                      reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
-                      notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
-                      idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
-                      autoPost: true,
-                      allocations: [
-                        {
-                          salesInvoiceId: targetInvoiceId,
-                          amount: String(advanceNum),
-                        },
-                      ],
-                    }),
-                  });
-                  const pmtPayload = await pmtRes.json().catch(() => null);
-                  if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
-                    const pmtId = pmtPayload.data.id;
-                    await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
-                    await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });
-                    await fetch(`/api/payments/${pmtId}/post`, { method: "POST" });
-                  }
-                } catch (pmtErr) {
-                  console.error("Auto-posting advance receipt failed:", pmtErr);
+            // Auto-record customer receipt voucher for immediate counter sales (Cash, Card, Wallet)
+            if (saleType !== "credit" && totals.grand > 0) {
+              try {
+                const isCash = saleType === "cash";
+                const cashAccId = advanceCashAccountId || lookups?.cashAccounts?.[0]?.id || null;
+                const bankAccId = advanceBankAccountId || lookups?.banks?.[0]?.id || null;
+
+                const pmtRes = await fetch("/api/payments", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    branchId,
+                    customerId,
+                    cashAccountId: isCash ? cashAccId : null,
+                    bankAccountId: !isCash ? bankAccId : null,
+                    paymentDate: invoiceDate,
+                    direction: "CUSTOMER_RECEIPT",
+                    currencyCode: currency,
+                    amount: String(totals.grand),
+                    reference: `POS ${saleType.toUpperCase()} ${invNum}`,
+                    notes: `Counter checkout receipt (${saleType.toUpperCase()}) for invoice ${invNum}`,
+                    idempotencyKey: `pos-${saleType}-${targetInvoiceId}-${Date.now()}`,
+                    autoPost: true,
+                    allocations: [
+                      {
+                        salesInvoiceId: targetInvoiceId,
+                        amount: String(totals.grand),
+                      },
+                    ],
+                  }),
+                });
+                const pmtPayload = await pmtRes.json().catch(() => null);
+                if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
+                  await fetch(`/api/payments/${pmtPayload.data.id}/post`, { method: "POST" });
                 }
+              } catch (pmtErr) {
+                console.error("Auto-posting counter receipt failed:", pmtErr);
               }
-
-              setNotice({
-                kind: "success",
-                text: `⚡ ${invNum} completed and POSTED!${saleType === "credit" && advanceNum > 0 ? ` Advance payment of ${money(advanceNum, currency)} received via ${advanceMethod === "CASH" ? "Cash Drawer" : "Bank"} and allocated to AR. Remaining balance due: ${money(remainingCreditDue, currency)}.` : " Physical stock deducted and financial ledger updated."}`,
-              });
-              return;
+            } else if (saleType === "credit" && advanceNum > 0) {
+              // Auto-record customer receipt voucher for credit sale advance payment
+              try {
+                const pmtRes = await fetch("/api/payments", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    branchId,
+                    customerId,
+                    cashAccountId: advanceMethod === "CASH" ? advanceCashAccountId : null,
+                    bankAccountId: advanceMethod === "BANK" ? advanceBankAccountId : null,
+                    paymentDate: invoiceDate,
+                    direction: "CUSTOMER_RECEIPT",
+                    currencyCode: currency,
+                    amount: String(advanceNum),
+                    reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
+                    notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
+                    idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
+                    autoPost: true,
+                    allocations: [
+                      {
+                        salesInvoiceId: targetInvoiceId,
+                        amount: String(advanceNum),
+                      },
+                    ],
+                  }),
+                });
+                const pmtPayload = await pmtRes.json().catch(() => null);
+                if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
+                  await fetch(`/api/payments/${pmtPayload.data.id}/post`, { method: "POST" });
+                }
+              } catch (pmtErr) {
+                console.error("Auto-posting advance receipt failed:", pmtErr);
+              }
             }
-          } else if (approvePayload?.error?.code === "CREDIT_LIMIT_EXCEEDED") {
+
+            setNotice({
+              kind: "success",
+              text: `⚡ ${invNum} completed and POSTED! ${
+                saleType !== "credit"
+                  ? `Payment of ${money(totals.grand, currency)} recorded to ${saleType === "cash" ? "Cash Drawer" : "Bank/Card"} and AR settled.`
+                  : advanceNum > 0
+                  ? `Advance payment of ${money(advanceNum, currency)} received via ${advanceMethod === "CASH" ? "Cash Drawer" : "Bank"} and allocated to AR. Remaining balance due: ${money(remainingCreditDue, currency)}.`
+                  : "Full amount recorded to Accounts Receivable on credit terms."
+              } Physical stock deducted and financial ledger updated.`,
+            });
+            return;
+          } else if (postPayload?.error?.code === "CREDIT_LIMIT_EXCEEDED") {
             setCreditOverrideDialog({
               invoiceId: targetInvoiceId,
               invoiceNumber: invNum,
-              details: approvePayload.error.details,
+              details: postPayload.error.details,
             });
             setCreditOverrideReason(`Counter credit extension authorized for ${invNum}`);
-            setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "SUBMITTED" });
+            setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "DRAFT" });
             setNotice({
               kind: "error",
-              text: `Customer credit limit exceeded. Managerial override required to approve and post ${invNum}.`,
+              text: `Customer credit limit exceeded. Managerial override required to post ${invNum}.`,
             });
             return;
+          } else {
+            throw new Error(postPayload?.error?.message || "Invoice was saved but could not be posted.");
           }
-        } catch {
-          // If maker-checker in multi-user mode prevents self-approval, fall back gracefully to submitted
+        } catch (postErr) {
+          throw postErr;
         }
       }
 
       setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status });
-      setNotice({ kind: "success", text: `${invNum} ${submit ? "submitted for approval" : "parked as a draft"}. Physical stock remains reserved until posted.` });
+      setNotice({ kind: "success", text: `${invNum} parked as a draft. Physical stock remains reserved until posted.` });
     } catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "POS invoice could not be saved." }); }
     finally { setBusy(false); }
   }
@@ -529,8 +580,6 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
           const pmtPayload = await pmtRes.json().catch(() => null);
           if (pmtRes.ok && pmtPayload?.data?.id && pmtPayload.data.status !== "POSTED") {
             const pmtId = pmtPayload.data.id;
-            await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
-            await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });
             await fetch(`/api/payments/${pmtId}/post`, { method: "POST" });
           }
         } catch (pmtErr) {
@@ -601,6 +650,17 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <button
+            type="button"
+            onClick={() => {
+              setParkedOpen(true);
+              void loadParkedSales();
+            }}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 transition"
+          >
+            <ReceiptText className="h-3.5 w-3.5 text-blue-600"/>
+            Parked Sales
+          </button>
           <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-[11px]">
             <b className="text-blue-700">F2</b> Search Catalog
           </span>
@@ -1389,26 +1449,16 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                 ⚡ Complete Sale & Post (Print)
               </button>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  disabled={busy || !cart.length}
-                  onClick={() => void createInvoice(true, false)}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                >
-                  <Send className="h-4 w-4"/>
-                  Submit for Approval
-                </button>
-                <button
-                  disabled={busy || !cart.length}
-                  onClick={() => void createInvoice(false, false)}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  <ReceiptText className="h-4 w-4"/>
-                  {invoiceId ? "Save Changes" : "Park Draft"}
-                </button>
-              </div>
+              <button
+                disabled={busy || !cart.length}
+                onClick={() => void createInvoice(false, false)}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              >
+                <ReceiptText className="h-4 w-4"/>
+                {invoiceId ? "Save Changes to Draft" : "Park / Save as Draft"}
+              </button>
               <p className="text-center text-[10px] leading-4 text-slate-400">
-                ⚡ Complete Sale directly decrements inventory and posts GL journals in authorized counter mode.
+                ⚡ Complete Sale directly decrements inventory, posts GL journals, and registers counter payment.
               </p>
             </div>
           ) : (
@@ -1420,12 +1470,20 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
               </p>
               <div className="mt-4 flex flex-col gap-2">
                 <Link
+                  href={`/sales/${invoice.id}/receipt`}
+                  target="_blank"
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow hover:bg-blue-700"
+                >
+                  <Receipt className="h-4 w-4"/>
+                  Print 80mm Thermal Receipt
+                </Link>
+                <Link
                   href={`/sales/${invoice.id}/print`}
                   target="_blank"
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 text-sm font-bold text-white shadow hover:bg-emerald-800"
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 shadow-xs hover:bg-slate-50"
                 >
                   <Printer className="h-4 w-4"/>
-                  Print Official Receipt / Invoice
+                  Print Standard A4 Invoice
                 </Link>
                 <button
                   onClick={reset}
@@ -1490,6 +1548,64 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
             {!searchResults.length && (
               <div className="py-14 text-center text-sm text-slate-400">
                 Type a query or press Search to browse available warehouse stock.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Parked Sales Modal */}
+    {parkedOpen && (
+      <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/50 p-4 pt-[10vh] backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setParkedOpen(false); }}>
+        <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 p-4">
+            <div className="flex items-center gap-2">
+              <ReceiptText className="h-5 w-5 text-blue-600"/>
+              <h2 className="text-base font-black text-slate-900">Parked / Held Sales Drafts</h2>
+            </div>
+            <button onClick={() => setParkedOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <X className="h-5 w-5"/>
+            </button>
+          </div>
+          <div className="max-h-[60vh] overflow-y-auto p-4">
+            {loadingParked ? (
+              <div className="flex items-center justify-center py-10 text-xs text-slate-500">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600"/> Loading parked sales…
+              </div>
+            ) : parkedInvoices.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-500">
+                No parked sales drafts found. Use &quot;Park / Save as Draft&quot; to hold sales.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {parkedInvoices.map((inv: any) => (
+                  <div key={inv.id} className="flex items-center justify-between py-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-slate-900">{inv.invoiceNumber}</span>
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{inv.customer?.name || "Walk-in"}</span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-slate-500">
+                        {String(inv.invoiceDate).slice(0, 10)} · {inv.lines?.length || 0} line items
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-sm font-bold text-slate-900">
+                        {money(Number(inv.grandTotal), currency)}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setParkedOpen(false);
+                          router.push(`/sales/${inv.id}/edit`);
+                        }}
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-blue-700"
+                      >
+                        Recall Sale →
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

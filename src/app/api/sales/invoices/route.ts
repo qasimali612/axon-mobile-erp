@@ -115,8 +115,9 @@ export async function GET(request: Request) {
     });
     const financials = new Map(financialRows.map((invoice) => {
       const paid = settlement(invoice.allocations);
-      const outstanding = Prisma.Decimal.max(invoice.grandTotal.minus(paid), 0);
-      return [invoice.id, { paid, outstanding, paymentStatus: invoicePaymentStatus(invoice.grandTotal, paid, invoice.dueDate, today) }];
+      const isPosted = invoice.status === OperationalDocumentStatus.POSTED;
+      const outstanding = isPosted ? Prisma.Decimal.max(invoice.grandTotal.minus(paid), 0) : new Prisma.Decimal(0);
+      return [invoice.id, { paid, outstanding, status: invoice.status, paymentStatus: invoicePaymentStatus(invoice.grandTotal, paid, invoice.dueDate, today) }];
     }));
     const paymentMatchedIds = paymentStatus
       ? financialRows.filter((invoice) => financials.get(invoice.id)?.paymentStatus === paymentStatus).map((invoice) => invoice.id)
@@ -158,27 +159,28 @@ export async function GET(request: Request) {
         take: pageSize,
       }),
       prisma.salesInvoice.count({ where }),
-      prisma.salesInvoice.aggregate({ where, _sum: { subtotal: true, discountTotal: true, taxTotal: true, grandTotal: true, costTotal: true } }),
+      prisma.salesInvoice.aggregate({ where: { ...where, status: OperationalDocumentStatus.POSTED }, _sum: { subtotal: true, discountTotal: true, taxTotal: true, grandTotal: true, costTotal: true } }),
       prisma.salesInvoiceLine.aggregate({ where: { invoice: where }, _sum: { quantity: true } }),
       prisma.salesInvoice.groupBy({ by: ["status"], where, _count: true, _sum: { grandTotal: true } }),
     ]);
     const items = rawItems.map((invoice) => {
       const paidAmount = settlement(invoice.allocations);
-      const outstandingAmount = Prisma.Decimal.max(invoice.grandTotal.minus(paidAmount), 0);
+      const isPosted = invoice.status === OperationalDocumentStatus.POSTED;
+      const outstandingAmount = isPosted ? Prisma.Decimal.max(invoice.grandTotal.minus(paidAmount), 0) : new Prisma.Decimal(0);
       return {
         ...invoice,
         paidAmount,
         outstandingAmount,
-        paymentStatus: invoicePaymentStatus(invoice.grandTotal, paidAmount, invoice.dueDate, today),
+        paymentStatus: isPosted
+          ? invoicePaymentStatus(invoice.grandTotal, paidAmount, invoice.dueDate, today)
+          : "DRAFT",
       };
     });
-    const selectedFinancials = paymentMatchedIds
-      ? paymentMatchedIds.map((id) => financials.get(id)).filter(Boolean)
-      : [...financials.values()];
-    const paidTotal = selectedFinancials.reduce((sum, item) => sum.plus(item!.paid), new Prisma.Decimal(0));
-    const outstandingTotal = selectedFinancials.reduce((sum, item) => sum.plus(item!.outstanding), new Prisma.Decimal(0));
-    const paymentStatuses = selectedFinancials.reduce<Record<string, number>>((acc, item) => {
-      acc[item!.paymentStatus] = (acc[item!.paymentStatus] || 0) + 1;
+    const postedFinancials = [...financials.values()].filter((item) => item.status === OperationalDocumentStatus.POSTED);
+    const paidTotal = postedFinancials.reduce((sum, item) => sum.plus(item.paid), new Prisma.Decimal(0));
+    const outstandingTotal = postedFinancials.reduce((sum, item) => sum.plus(item.outstanding), new Prisma.Decimal(0));
+    const paymentStatuses = postedFinancials.reduce<Record<string, number>>((acc, item) => {
+      acc[item.paymentStatus] = (acc[item.paymentStatus] || 0) + 1;
       return acc;
     }, {});
 
@@ -190,6 +192,7 @@ export async function GET(request: Request) {
         discountTotal: totals._sum.discountTotal || 0,
         taxTotal: totals._sum.taxTotal || 0,
         grandTotal: totals._sum.grandTotal || 0,
+        postedSales: totals._sum.grandTotal || 0,
         costTotal: totals._sum.costTotal || 0,
         quantity: quantityTotals._sum.quantity || 0,
         paidTotal,

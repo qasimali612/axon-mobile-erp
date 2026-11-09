@@ -19,11 +19,37 @@ export async function GET(request: Request) {
     if (warehouseId && !warehouse) throw new ApiError(404, "WAREHOUSE_NOT_FOUND", "The selected warehouse was not found.");
     const context = await requirePermission(mode === "sale" ? "sales.view" : "purchase.view", warehouse ? { branchId: warehouse.branchId, warehouseId: warehouse.id } : undefined);
     const canViewCost = context.permissions.includes("catalog.cost.view");
+
+    // Also look up any products/variants matching an IMEI or device identifier in stock
+    let imeiProductIds: string[] = [];
+    if (q && q.length >= 3) {
+      const matchingUnits = await prisma.deviceIdentifier.findMany({
+        where: {
+          value: { contains: q, mode: "insensitive" },
+          stockUnit: {
+            companyId: context.company.id,
+            ...(warehouseId ? { warehouseId } : {}),
+            ...(mode === "sale" ? { status: "IN_STOCK" } : {}),
+          },
+        },
+        select: {
+          stockUnit: {
+            select: {
+              productId: true,
+            },
+          },
+        },
+        take: 30,
+      });
+      imeiProductIds = [...new Set(matchingUnits.map((u: any) => u.stockUnit?.productId).filter(Boolean))];
+    }
+
     const products = await prisma.product.findMany({
       where: {
         companyId: context.company.id,
         status: "ACTIVE",
         ...(q ? { OR: [
+          ...(imeiProductIds.length > 0 ? [{ id: { in: imeiProductIds } }] : []),
           { sku: { contains: q, mode: "insensitive" } },
           { name: { contains: q, mode: "insensitive" } },
           { model: { contains: q, mode: "insensitive" } },

@@ -234,10 +234,10 @@ export function SalesManager({
   const metrics = useMemo(() => {
     const count = (states: string[]) =>
       states.reduce((sum, item) => sum + Number(summary?.statuses?.[item]?.count || 0), 0);
+    const unposted = count(["DRAFT", "SUBMITTED", "APPROVED"]);
     return {
       total: pagination.total,
-      draft: count(["DRAFT"]),
-      pending: count(["SUBMITTED", "APPROVED"]),
+      unposted,
       posted: count(["POSTED"]),
     };
   }, [pagination.total, summary]);
@@ -254,20 +254,20 @@ export function SalesManager({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {metrics.pending > 0 && can("SALES_INVOICE_POST") && (
+          {metrics.unposted > 0 && can("SALES_INVOICE_POST") && (
             <Button
               type="button"
               disabled={batchPosting}
               onClick={() => void handleBatchAutoPost()}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
-              title="Auto-post all submitted and approved invoices directly to stock and General Ledger"
+              title="Post all unposted sales invoices directly to inventory and General Ledger"
             >
               {batchPosting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Zap className="h-4 w-4 fill-amber-300 text-amber-200" />
               )}
-              ⚡ Auto-Post All Awaiting ({metrics.pending})
+              ⚡ Post All Unposted Invoices ({metrics.unposted})
             </Button>
           )}
           {can("SALES_INVOICE_CREATE") && (
@@ -295,26 +295,15 @@ export function SalesManager({
           <span className="mt-0.5 block text-[10px] text-slate-400">Total registered</span>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Drafts</span>
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-700">
-              <FilePlus2 className="h-3.5 w-3.5" />
-            </span>
-          </div>
-          <p className="mt-2 text-2xl font-black tabular-nums text-slate-800">{metrics.draft}</p>
-          <span className="mt-0.5 block text-[10px] text-slate-400">Uncommitted drafts</span>
-        </div>
-
         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Awaiting Action</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Unposted Invoices</span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-amber-100 text-amber-800">
               <FileClock className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2 text-2xl font-black tabular-nums text-amber-950">{metrics.pending}</p>
-          <span className="mt-0.5 block text-[10px] text-amber-700 font-medium">Submitted / Approved</span>
+          <p className="mt-2 text-2xl font-black tabular-nums text-amber-950">{metrics.unposted}</p>
+          <span className="mt-0.5 block text-[10px] text-amber-700 font-medium">Ready to post directly</span>
         </div>
 
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-xs">
@@ -330,15 +319,28 @@ export function SalesManager({
 
         <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-800">Filtered Sales</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-800">Posted Sales</span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-100 text-indigo-800">
               <BadgeDollarSign className="h-3.5 w-3.5" />
             </span>
           </div>
-          <p className="mt-2 text-xl font-black tabular-nums text-indigo-950 truncate" title={formatMoney(summary?.grandTotal || 0, currency)}>
-            {formatMoney(summary?.grandTotal || 0, currency)}
+          <p className="mt-2 text-xl font-black tabular-nums text-indigo-950 truncate" title={formatMoney(summary?.postedSales || summary?.grandTotal || 0, currency)}>
+            {formatMoney(summary?.postedSales || summary?.grandTotal || 0, currency)}
           </p>
-          <span className="mt-0.5 block text-[10px] text-indigo-700 font-medium">Gross revenue</span>
+          <span className="mt-0.5 block text-[10px] text-indigo-700 font-medium">Recognized revenue</span>
+        </div>
+
+        <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-teal-800">Collected Amount</span>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-teal-100 text-teal-800">
+              <CheckCircle2 className="h-3.5 w-3.5 text-teal-700" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-black tabular-nums text-teal-950 truncate" title={formatMoney(summary?.paidTotal || 0, currency)}>
+            {formatMoney(summary?.paidTotal || 0, currency)}
+          </p>
+          <span className="mt-0.5 block text-[10px] text-teal-700 font-medium">Settled receipts</span>
         </div>
 
         <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 shadow-xs">
@@ -351,7 +353,7 @@ export function SalesManager({
           <p className="mt-2 text-xl font-black tabular-nums text-rose-950 truncate" title={formatMoney(summary?.outstandingTotal || 0, currency)}>
             {formatMoney(summary?.outstandingTotal || 0, currency)}
           </p>
-          <span className="mt-0.5 block text-[10px] text-rose-700 font-medium">Receivable balance</span>
+          <span className="mt-0.5 block text-[10px] text-rose-700 font-medium">Posted receivable balance</span>
         </div>
       </section>
 
@@ -361,9 +363,8 @@ export function SalesManager({
         <div className="flex border-b border-slate-100 bg-slate-50/50 px-4 pt-2 overflow-x-auto gap-1">
           {[
             { id: "ALL", label: "All Invoices", count: metrics.total },
-            { id: "AWAITING", label: "Awaiting Action", count: metrics.pending },
+            { id: "AWAITING", label: "Unposted Invoices", count: metrics.unposted },
             { id: "POSTED", label: "Posted to GL", count: metrics.posted },
-            { id: "DRAFT", label: "Drafts", count: metrics.draft },
             { id: "UNPAID", label: "Unpaid / Overdue" },
           ].map((tab) => (
             <button
@@ -599,49 +600,21 @@ export function SalesManager({
                               </Link>
                             )}
 
-                          {/* Fast-Track Direct Post for Cashier / Owner */}
-                          {/* Fast-Track Direct Post */}
-                          {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && (
+                          {/* Direct Post for any unposted invoice (Draft, Submitted, Approved) */}
+                          {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && can("SALES_INVOICE_CREATE") && (
                             <Button
                               size="sm"
                               disabled={actingId === row.id}
                               onClick={() => void directPost(row)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1 text-[11px] px-2.5 h-8 shadow-xs"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1 text-[11px] px-2.5 h-8 shadow-xs"
                               title="⚡ Direct Post: commit atomically to stock & GL"
                             >
                               {actingId === row.id ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
-                                <Zap className="h-3 w-3" />
+                                <Zap className="h-3 w-3 fill-amber-300 text-amber-200" />
                               )}
                               Post Now
-                            </Button>
-                          )}
-
-                          {/* Workflow: Approve & Post */}
-                          {row.status === "SUBMITTED" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={actingId === row.id}
-                              onClick={() => void directPost(row)}
-                              className="h-8 text-xs font-semibold text-blue-700 border-blue-200 hover:bg-blue-50 gap-1"
-                            >
-                              <BadgeCheck className="h-3 w-3 text-blue-600" />
-                              Approve &amp; Post
-                            </Button>
-                          )}
-
-                          {/* Workflow: Post */}
-                          {row.status === "APPROVED" && can("SALES_INVOICE_POST") && (
-                            <Button
-                              size="sm"
-                              disabled={actingId === row.id}
-                              onClick={() => void act(row, "post")}
-                              className="h-8 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white gap-1"
-                            >
-                              <PackageCheck className="h-3 w-3" />
-                              Post stock + GL
                             </Button>
                           )}
 

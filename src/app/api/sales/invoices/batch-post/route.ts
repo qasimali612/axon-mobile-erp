@@ -37,12 +37,6 @@ export async function POST(request: Request) {
 
     for (const inv of targetInvoices) {
       try {
-        if (inv.status === OperationalDocumentStatus.DRAFT) {
-          await submitSalesInvoice(actor, inv.id);
-          await approveSalesInvoice(actor, inv.id);
-        } else if (inv.status === OperationalDocumentStatus.SUBMITTED) {
-          await approveSalesInvoice(actor, inv.id);
-        }
         await postSalesInvoice(actor, inv.id);
         results.push({ id: inv.id, invoiceNumber: inv.invoiceNumber, success: true });
       } catch (err) {

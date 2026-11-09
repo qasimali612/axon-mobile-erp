@@ -36,12 +36,6 @@ export async function POST(request: Request) {
 
     for (const p of targetPayments) {
       try {
-        if (p.status === OperationalDocumentStatus.DRAFT) {
-          await submitPayment(actor, p.id);
-          await approvePayment(actor, p.id);
-        } else if (p.status === OperationalDocumentStatus.SUBMITTED) {
-          await approvePayment(actor, p.id);
-        }
         await postPayment(actor, p.id);
         results.push({ id: p.id, paymentNumber: p.paymentNumber, success: true });
       } catch (err) {

@@ -24,6 +24,7 @@ export async function nextDocumentNumber(
     ON CONFLICT ("companyId", "branchId", "documentType", "fiscalYear")
     DO UPDATE SET
       "nextValue" = "DocumentSequence"."nextValue" + 1,
+      "prefix" = ${input.prefix},
       "version" = "DocumentSequence"."version" + 1,
       "updatedAt" = NOW()
     RETURNING "nextValue" - 1 AS "nextValue", "prefix", "padding"
