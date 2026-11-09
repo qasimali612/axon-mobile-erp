@@ -72,7 +72,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const recordScope = await scope(id);
     const context = await requirePermission("SALES_INVOICE_CREATE", recordScope);
     const data = await updateSalesInvoiceDraft(
-      { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode },
+      { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode, permissions: context.permissions },
       id,
       body,
     );

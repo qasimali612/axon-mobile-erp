@@ -5,10 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Banknote,
   Barcode,
   CheckCircle2,
   Clock3,
   CreditCard,
+  HandCoins,
+  Landmark,
   Loader2,
   Minus,
   PackageSearch,
@@ -35,8 +38,10 @@ type Lookup = {
   warehouses: Array<{ id: string; branchId: string; code: string; name: string; allowDispatch: boolean }>;
   customers: Array<{ id: string; branchId: string | null; code: string; name: string; paymentTermsDays: number; creditLimit?: string }>;
   users: Array<{ id: string; fullName: string }>;
+  banks?: Array<{ id: string; branchId: string | null; code: string; bankName: string; currencyCode: string }>;
+  cashAccounts?: Array<{ id: string; branchId: string | null; code: string; name: string; currencyCode: string }>;
 };
-type Props = { currency: string; userId: string; permissions: string[]; invoiceId?: string };
+type Props = { currency: string; userId: string; permissions?: string[]; invoiceId?: string };
 
 const inputClass = "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -72,7 +77,7 @@ function playScanBeep(success = true) {
   }
 }
 
-export function PosWorkspace({ currency, userId, invoiceId }: Props) {
+export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: Props) {
   const router = useRouter();
   const [lookups, setLookups] = useState<Lookup | null>(null);
   const [branchId, setBranchId] = useState("");
@@ -99,6 +104,15 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [invoice, setInvoice] = useState<{ id: string; invoiceNumber: string; status: string } | null>(null);
+
+  // Credit Invoice Advance / Down Payment State
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advanceMethod, setAdvanceMethod] = useState<"CASH" | "BANK">("CASH");
+  const [advanceCashAccountId, setAdvanceCashAccountId] = useState("");
+  const [advanceBankAccountId, setAdvanceBankAccountId] = useState("");
+  const [advanceReference, setAdvanceReference] = useState("");
+  const [advanceTendered, setAdvanceTendered] = useState("");
+
   const scanRef = useRef<HTMLInputElement>(null);
   const customerRef = useRef<HTMLSelectElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -119,6 +133,14 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
       if (!lookupResponse.ok || !lookupPayload?.data) throw new Error(lookupPayload?.error?.message || "POS lookups are unavailable.");
       if (!active) return;
       setLookups(lookupPayload.data);
+      if (lookupPayload.data.cashAccounts && lookupPayload.data.cashAccounts.length > 0) {
+        const branchCash = lookupPayload.data.cashAccounts.find((c: any) => !c.branchId || c.branchId === lookupPayload.data.branches[0]?.id) || lookupPayload.data.cashAccounts[0];
+        setAdvanceCashAccountId(branchCash?.id || "");
+      }
+      if (lookupPayload.data.banks && lookupPayload.data.banks.length > 0) {
+        const branchBank = lookupPayload.data.banks.find((b: any) => !b.branchId || b.branchId === lookupPayload.data.branches[0]?.id) || lookupPayload.data.banks[0];
+        setAdvanceBankAccountId(branchBank?.id || "");
+      }
       if (!invoiceResponse) {
         const branch = lookupPayload.data.branches[0];
         const warehouse = lookupPayload.data.warehouses.find((item: any) => item.branchId === branch?.id && item.allowDispatch);
@@ -132,8 +154,15 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
       const invoicePayload = await invoiceResponse.json().catch(() => null);
       if (!invoiceResponse.ok || !invoicePayload?.data) throw new Error(invoicePayload?.error?.message || "Sales invoice could not be loaded.");
       const source = invoicePayload.data;
-      if (source.status !== "DRAFT") throw new Error("Only a draft sales invoice can be edited.");
-      if (source.preparedById !== userId) throw new Error("Only the invoice preparer can edit this draft.");
+      if (source.status === "POSTED" || source.status === "REVERSED" || source.status === "CANCELLED") {
+        throw new Error("Posted, reversed, or cancelled sales invoices cannot be edited.");
+      }
+      const canEdit =
+        source.preparedById === userId ||
+        permissions.includes("SALES_INVOICE_APPROVE") ||
+        permissions.includes("SALES_INVOICE_CREATE") ||
+        permissions.includes("sales.manage");
+      if (!canEdit) throw new Error("Only the invoice preparer or authorized staff can edit this sales draft.");
       const initialCart: CartLine[] = await Promise.all(source.lines.map(async (line: any) => {
         const serialized = ["IMEI", "SERIAL"].includes(line.product.trackingMethod);
         let availableQuantity = Math.max(Number(line.quantity), line.units.length);
@@ -313,11 +342,27 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   async function createInvoice(submit: boolean, postNow = false) {
     if (!branchId || !warehouseId || !customerId || !cart.length) { setNotice({ kind: "error", text: "Select a customer and add at least one available item." }); return; }
     setBusy(true); setNotice(null);
+    const advanceNum = num(advanceAmount);
+    const remainingCreditDue = Math.max(0, totals.grand - advanceNum);
+    const branchCashAccount = lookups?.cashAccounts?.find((c) => c.id === advanceCashAccountId);
+    const branchBankAccount = lookups?.banks?.find((b) => b.id === advanceBankAccountId);
+    const advanceAccountName =
+      advanceMethod === "CASH"
+        ? (branchCashAccount ? `${branchCashAccount.code} · ${branchCashAccount.name}` : "Cash Drawer")
+        : (branchBankAccount ? `${branchBankAccount.code} · ${branchBankAccount.bankName}` : "Bank Account");
+
+    const advanceNotesSnippet =
+      saleType === "credit" && advanceNum > 0
+        ? ` · Advance Paid: ${money(advanceNum, currency)} via ${advanceMethod} (${advanceAccountName}${advanceReference ? `, Ref: ${advanceReference}` : ""}) · Remaining Due: ${money(remainingCreditDue, currency)}`
+        : "";
+
     try {
       const body = {
         branchId, warehouseId, customerId, salespersonId: salespersonId || null, priceListId: priceListId || null, invoiceDate,
         dueDate: saleType === "credit" ? (dueDate || invoiceDate) : null, currencyCode: currency,
-        notes: notes.trim() || `POS [${saleType.toUpperCase()}]${saleType === "cash" && tendered ? ` · tendered ${tendered} · change ${Math.max(0, num(tendered) - totals.grand).toFixed(2)}` : ""}. Counter checkout.`,
+        notes: notes.trim()
+          ? `${notes.trim()}${advanceNotesSnippet}`
+          : `POS [${saleType.toUpperCase()}]${saleType === "cash" && tendered ? ` · tendered ${tendered} · change ${Math.max(0, num(tendered) - totals.grand).toFixed(2)}` : ""}${advanceNotesSnippet}. Counter checkout.`,
         idempotencyKey: sourceIdempotencyKey || `pos-${crypto.randomUUID()}`,
         lines: cart.map((line) => ({
           productId: line.product.id, variantId: line.variant.id, taxRuleId: line.product.taxRule?.id || null, taxRate: line.product.taxRule?.rate || "0",
@@ -351,7 +396,49 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
             if (postResponse.ok) {
               status = "POSTED";
               setInvoice({ id: targetInvoiceId, invoiceNumber: invNum, status: "POSTED" });
-              setNotice({ kind: "success", text: `⚡ ${invNum} completed and POSTED! Physical stock deducted and financial ledger updated.` });
+
+              // Auto-record customer receipt voucher for advance payment
+              if (saleType === "credit" && advanceNum > 0) {
+                try {
+                  const pmtRes = await fetch("/api/payments", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      branchId,
+                      customerId,
+                      cashAccountId: advanceMethod === "CASH" ? advanceCashAccountId : null,
+                      bankAccountId: advanceMethod === "BANK" ? advanceBankAccountId : null,
+                      paymentDate: invoiceDate,
+                      direction: "CUSTOMER_RECEIPT",
+                      currencyCode: currency,
+                      amount: String(advanceNum),
+                      reference: advanceReference ? `Adv on ${invNum}: ${advanceReference}` : `Advance on ${invNum}`,
+                      notes: `Advance down payment received at POS counter for credit invoice ${invNum}`,
+                      idempotencyKey: `pos-adv-${targetInvoiceId}-${Date.now()}`,
+                      allocations: [
+                        {
+                          salesInvoiceId: targetInvoiceId,
+                          amount: String(advanceNum),
+                        },
+                      ],
+                    }),
+                  });
+                  const pmtPayload = await pmtRes.json().catch(() => null);
+                  if (pmtRes.ok && pmtPayload?.data?.id) {
+                    const pmtId = pmtPayload.data.id;
+                    await fetch(`/api/payments/${pmtId}/submit`, { method: "POST" });
+                    await fetch(`/api/payments/${pmtId}/approve`, { method: "POST" });
+                    await fetch(`/api/payments/${pmtId}/post`, { method: "POST" });
+                  }
+                } catch (pmtErr) {
+                  console.error("Auto-posting advance receipt failed:", pmtErr);
+                }
+              }
+
+              setNotice({
+                kind: "success",
+                text: `⚡ ${invNum} completed and POSTED!${saleType === "credit" && advanceNum > 0 ? ` Advance payment of ${money(advanceNum, currency)} received via ${advanceMethod === "CASH" ? "Cash Drawer" : "Bank"} and allocated to AR. Remaining balance due: ${money(remainingCreditDue, currency)}.` : " Physical stock deducted and financial ledger updated."}`,
+              });
               return;
             }
           }
@@ -366,7 +453,18 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
     finally { setBusy(false); }
   }
 
-  function reset() { if (invoiceId) { router.push("/sales"); return; } setCart([]); setInvoice(null); setTendered(""); setNotes(""); setNotice(null); requestAnimationFrame(() => scanRef.current?.focus()); }
+  function reset() {
+    if (invoiceId) { router.push("/sales"); return; }
+    setCart([]);
+    setInvoice(null);
+    setTendered("");
+    setAdvanceAmount("");
+    setAdvanceReference("");
+    setAdvanceTendered("");
+    setNotes("");
+    setNotice(null);
+    requestAnimationFrame(() => scanRef.current?.focus());
+  }
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -383,11 +481,14 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
     window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler);
     // createInvoice reads current state and is intentionally rebound on render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, branchId, warehouseId, customerId, salespersonId, saleType, invoiceDate, dueDate, notes, tendered, invoiceId, sourceIdempotencyKey]);
+  }, [cart, branchId, warehouseId, customerId, salespersonId, saleType, invoiceDate, dueDate, notes, tendered, advanceAmount, advanceMethod, advanceCashAccountId, advanceBankAccountId, advanceReference, invoiceId, sourceIdempotencyKey]);
 
   if (!lookups) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600"/><span className="text-sm text-slate-500">Opening POS terminal…</span></div>;
   const change = Math.max(0, num(tendered) - totals.grand);
   const shortage = Math.max(0, totals.grand - num(tendered));
+  const advanceNum = num(advanceAmount);
+  const remainingCreditDue = Math.max(0, totals.grand - advanceNum);
+  const advanceChange = Math.max(0, num(advanceTendered) - advanceNum);
 
   return <div className="-m-4 min-h-[calc(100vh-72px)] bg-slate-100 sm:-m-6 lg:-m-8">
     {/* POS Header Bar */}
@@ -799,10 +900,256 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
           </div>
 
           {saleType === "credit" ? (
-            <label className="block">
-              <span className="label">Payment Due Date *</span>
-              <input type="date" className={inputClass} min={invoiceDate} value={dueDate} disabled={Boolean(invoice)} onChange={(event) => setDueDate(event.target.value)}/>
-            </label>
+            <div className="space-y-3">
+              <label className="block">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="label mb-0">Payment Due Date *</span>
+                  <div className="flex gap-1 text-[10px]">
+                    {[7, 15, 30].map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        disabled={Boolean(invoice)}
+                        onClick={() => {
+                          const base = invoiceDate ? new Date(invoiceDate) : new Date();
+                          base.setDate(base.getDate() + days);
+                          setDueDate(base.toISOString().slice(0, 10));
+                        }}
+                        className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-bold text-amber-800 hover:bg-amber-100"
+                      >
+                        +{days}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  type="date"
+                  className={inputClass}
+                  min={invoiceDate}
+                  value={dueDate}
+                  disabled={Boolean(invoice)}
+                  onChange={(event) => setDueDate(event.target.value)}
+                />
+              </label>
+
+              {/* Advance / Down Payment Received Section */}
+              <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-3.5 shadow-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <HandCoins className="h-4 w-4 text-amber-700" />
+                    <span className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                      Advance Received (Down Payment)
+                    </span>
+                  </div>
+                  {advanceNum > 0 && (
+                    <button
+                      type="button"
+                      disabled={Boolean(invoice)}
+                      onClick={() => {
+                        setAdvanceAmount("");
+                        setAdvanceReference("");
+                        setAdvanceTendered("");
+                      }}
+                      className="text-[10px] font-bold text-amber-800 hover:text-rose-600 underline"
+                    >
+                      Clear Advance
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-amber-900/80 mb-2.5">
+                  Collect upfront cash or bank deposit at checkout. Remaining balance stays due on credit terms.
+                </p>
+
+                {/* Advance Method Selection: Cash vs Bank */}
+                <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                  <button
+                    type="button"
+                    disabled={Boolean(invoice)}
+                    onClick={() => setAdvanceMethod("CASH")}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-bold transition ${
+                      advanceMethod === "CASH"
+                        ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Banknote className="h-3.5 w-3.5" />
+                    Cash Drawer
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(invoice)}
+                    onClick={() => setAdvanceMethod("BANK")}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-bold transition ${
+                      advanceMethod === "BANK"
+                        ? "border-blue-600 bg-blue-600 text-white shadow-xs"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Landmark className="h-3.5 w-3.5" />
+                    Bank / Raast
+                  </button>
+                </div>
+
+                {/* Account Selection */}
+                {advanceMethod === "CASH" ? (
+                  <div className="mb-2.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      Cash Drawer Account *
+                    </label>
+                    <select
+                      value={advanceCashAccountId}
+                      disabled={Boolean(invoice)}
+                      onChange={(e) => setAdvanceCashAccountId(e.target.value)}
+                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-mono text-slate-900 focus:outline-none"
+                    >
+                      {(lookups?.cashAccounts || []).map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          💵 {acc.code} · {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="mb-2.5 space-y-2">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                        Bank Deposit Account *
+                      </label>
+                      <select
+                        value={advanceBankAccountId}
+                        disabled={Boolean(invoice)}
+                        onChange={(e) => setAdvanceBankAccountId(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-mono text-slate-900 focus:outline-none"
+                      >
+                        {(lookups?.banks || []).map((bank) => (
+                          <option key={bank.id} value={bank.id}>
+                            🏦 {bank.code} · {bank.bankName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                        Bank Slip / Cheque / Transfer Ref
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. IBFT-99120, Chq #55021, Raast Ref"
+                        value={advanceReference}
+                        disabled={Boolean(invoice)}
+                        onChange={(e) => setAdvanceReference(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Advance Amount Input & Percentage Chips */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                      Advance Received Amount ({currency})
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Total: {money(totals.grand, currency)}
+                    </span>
+                  </div>
+
+                  {/* Percentage Presets */}
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {[10, 20, 25, 30, 50].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        disabled={Boolean(invoice) || totals.grand <= 0}
+                        onClick={() => {
+                          const calculated = Math.round((totals.grand * pct) / 100);
+                          setAdvanceAmount(String(calculated));
+                        }}
+                        className="rounded bg-white border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
+                      >
+                        {pct}% ({money((totals.grand * pct) / 100, currency)})
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={totals.grand}
+                    placeholder="0.00"
+                    disabled={Boolean(invoice)}
+                    value={advanceAmount}
+                    onChange={(e) => setAdvanceAmount(e.target.value)}
+                    className={`${inputClass} text-right font-mono text-lg font-black text-slate-900`}
+                  />
+                </div>
+
+                {/* Cash Drawer Calculator for Advance */}
+                {advanceMethod === "CASH" && advanceNum > 0 && (
+                  <div className="mt-2.5 rounded-lg border border-emerald-300 bg-emerald-50/80 p-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                        Cash Tendered at Counter
+                      </span>
+                      {advanceTendered && (
+                        <button
+                          type="button"
+                          onClick={() => setAdvanceTendered("")}
+                          className="text-[9px] text-slate-400 hover:text-slate-600"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 items-center">
+                      <input
+                        type="number"
+                        placeholder={advanceAmount}
+                        disabled={Boolean(invoice)}
+                        value={advanceTendered}
+                        onChange={(e) => setAdvanceTendered(e.target.value)}
+                        className="h-7 w-full rounded border border-emerald-300 bg-white px-2 text-right font-mono text-xs font-bold text-emerald-950 focus:outline-none"
+                      />
+                      <div className="text-right">
+                        <span className="block text-[9px] text-emerald-700">Change Return:</span>
+                        <span className="font-mono font-bold text-xs text-emerald-950">
+                          {money(advanceChange, currency)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Real-time Credit & Settlement Breakdown Banner */}
+                {totals.grand > 0 && (
+                  <div className="mt-3 rounded-lg border border-amber-300/80 bg-white p-2.5 text-xs divide-y divide-slate-100 shadow-2xs">
+                    <div className="flex justify-between py-1">
+                      <span className="text-slate-500 text-[11px]">Invoice Grand Total</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {money(totals.grand, currency)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-emerald-700 font-semibold text-[11px]">
+                        Advance Down Payment
+                      </span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        − {money(advanceNum, currency)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-1.5 font-bold">
+                      <span className="text-amber-950 text-[11px]">Remaining Due on Terms</span>
+                      <span className="font-mono font-black text-sm text-amber-900">
+                        {money(remainingCreditDue, currency)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <div>
               <div className="flex items-center justify-between">
@@ -928,6 +1275,18 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
                   <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Grand Total</span>
                   <span className="text-2xl font-black text-blue-300">{money(totals.grand, currency)}</span>
                 </div>
+                {saleType === "credit" && advanceNum > 0 && (
+                  <div className="mt-2.5 space-y-1.5 border-t border-white/10 pt-2 text-xs">
+                    <div className="flex justify-between text-emerald-400">
+                      <span>Advance Received ({advanceMethod === "CASH" ? "Cash" : "Bank"})</span>
+                      <b className="font-mono">− {money(advanceNum, currency)}</b>
+                    </div>
+                    <div className="flex justify-between text-amber-300 font-bold">
+                      <span className="uppercase text-[10px] tracking-wider">Remaining Due on Terms</span>
+                      <b className="font-mono text-sm">{money(remainingCreditDue, currency)}</b>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

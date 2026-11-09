@@ -18,10 +18,14 @@ export default async function ThermalReceiptPage({ params }: PageProps) {
     include: {
       company: true, branch: true, customer: true, salesperson: { select: { fullName: true } },
       lines: { include: { product: true, variant: true, units: { include: { stockUnit: { include: { identifiers: { orderBy: [{ type: "asc" }, { slot: "asc" }] } } } } } }, orderBy: { lineNumber: "asc" } },
+      allocations: { select: { amount: true } },
     },
   });
   if (!invoice) notFound();
   assertPermittedBranch(context, "sales.view", invoice.branchId);
+
+  const paidTotal = invoice.allocations.reduce((sum, a) => sum + a.amount.toNumber(), 0);
+  const balanceDue = Math.max(0, invoice.grandTotal.toNumber() - paidTotal);
 
   return (
     <div className="mx-auto max-w-[420px]">
@@ -53,11 +57,18 @@ export default async function ThermalReceiptPage({ params }: PageProps) {
           <div className="flex justify-between"><span>Discount</span><span>-{amount(invoice.discountTotal, invoice.currencyCode)}</span></div>
           <div className="flex justify-between"><span>Tax</span><span>{amount(invoice.taxTotal, invoice.currencyCode)}</span></div>
           <div className="flex justify-between border-t border-black pt-1 text-xs font-bold"><span>TOTAL</span><span>{amount(invoice.grandTotal, invoice.currencyCode)}</span></div>
+          {paidTotal > 0 && (
+            <>
+              <div className="flex justify-between pt-0.5 text-[9px] font-semibold"><span>ADVANCE / PAID</span><span>{new Intl.NumberFormat("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(paidTotal)} {invoice.currencyCode}</span></div>
+              <div className="flex justify-between border-t border-dashed border-black pt-0.5 text-xs font-black"><span>BALANCE DUE</span><span>{new Intl.NumberFormat("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(balanceDue)} {invoice.currencyCode}</span></div>
+            </>
+          )}
         </div>
         <footer className="mt-2 border-t border-dashed border-black pt-1 text-center text-[9px]">
           <div>{invoice.status === "POSTED" ? "Posted sale — goods sold are final." : "UNPOSTED — not a valid sale yet."}</div>
           <div>Returns accepted within policy with this receipt.</div>
           <div className="mt-1">Thank you for your business.</div>
+          <div className="mt-1 text-[8px] text-slate-400">© 2026 Copyright Reserved · Qasim Ali · 0315-5049489</div>
         </footer>
       </article>
     </div>

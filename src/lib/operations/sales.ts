@@ -254,8 +254,20 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
     async (tx) => {
       const current = await lockSalesInvoice(tx, id, actor.companyId);
       if (!current) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
-      if (current.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft sales invoice can be edited.");
-      if (current.preparedById !== actor.userId) throw new ApiError(403, "NOT_PREPARER", "Only the preparer may edit this sales invoice.");
+      if (
+        current.status === OperationalDocumentStatus.POSTED ||
+        current.status === OperationalDocumentStatus.REVERSED ||
+        current.status === OperationalDocumentStatus.CANCELLED
+      ) {
+        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Posted, reversed, or cancelled sales invoices cannot be edited.");
+      }
+      const canEdit =
+        current.preparedById === actor.userId ||
+        !actor.permissions ||
+        actor.permissions.includes("SALES_INVOICE_APPROVE") ||
+        actor.permissions.includes("SALES_INVOICE_CREATE") ||
+        actor.permissions.includes("sales.manage");
+      if (!canEdit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may edit this sales invoice.");
       const prepared = await prepareSalesDraftData(tx, actor, input);
       await tx.salesInvoiceUnit.deleteMany({ where: { invoiceLine: { invoiceId: id } } });
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
@@ -267,6 +279,9 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
           customerId: input.customerId,
           salespersonId: prepared.salespersonId,
           priceListId: prepared.priceListId,
+          status: OperationalDocumentStatus.DRAFT,
+          approvedById: null,
+          approvedAt: null,
           invoiceDate,
           dueDate,
           currencyCode: input.currencyCode,
