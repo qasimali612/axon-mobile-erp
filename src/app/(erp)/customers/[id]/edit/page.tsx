@@ -7,3 +7,4 @@ export default async function EditCustomerPage({ params }: PageProps) {
   const id = idSchema.parse((await params).id);
   redirect(`/customers?edit=${id}`);
 }
+

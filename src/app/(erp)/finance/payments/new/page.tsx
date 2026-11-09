@@ -10,3 +10,4 @@ export default async function NewPaymentPage({
   query.set("new", "1");
   redirect(`/finance/payments?${query.toString()}`);
 }
+

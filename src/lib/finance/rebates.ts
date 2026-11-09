@@ -20,13 +20,14 @@ export type RebateProgramInput = {
   customerId?: string | null;
   effectiveFrom: string;
   effectiveTo: string;
-  calculationMethod: "PERCENT_OF_VALUE" | "PER_UNIT" | "FIXED_AMOUNT" | "PRICE_PROTECTION";
+  calculationMethod: "PERCENT_OF_VALUE" | "PER_UNIT" | "FIXED_AMOUNT" | "PRICE_PROTECTION" | "COMPANY_PRICE_REDUCTION" | "PURCHASE_REBATE" | "PROMOTIONAL_REBATE" | "VOLUME_REBATE" | "SPECIAL_ADJUSTMENT";
   rate?: string | null;
   fixedAmount?: string | null;
   primaryAccountId: string;
   settlementAccountId: string;
   accountingTreatment: "INCOME" | "COST_REDUCTION";
   isActive: boolean;
+  rules?: Record<string, any> | null;
 };
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -66,6 +67,7 @@ export async function saveRebateProgram(actor: RebateActor, input: RebateProgram
     settlementAccountId: input.settlementAccountId,
     accountingTreatment: input.accountingTreatment,
     isActive: input.isActive,
+    rules: (input.rules as Prisma.InputJsonValue) ?? Prisma.JsonNull,
   };
   if (id) {
     const existing = await prisma.rebateProgram.findFirst({ where: { id, companyId: actor.companyId } });
@@ -123,7 +125,19 @@ async function collectEligibility(program: { companyId: string; direction: Rebat
   return { value, quantity, documents: invoices.length + returns.length };
 }
 
-export async function calculateRebate(actor: RebateActor, programId: string, input: { periodStart: string; periodEnd: string; items?: RebateItem[] }) {
+export async function calculateRebate(
+  actor: RebateActor,
+  programId: string,
+  input: {
+    periodStart: string;
+    periodEnd: string;
+    items?: RebateItem[];
+    title?: string | null;
+    supportingDocRef?: string | null;
+    remarks?: string | null;
+    submitImmediately?: boolean;
+  }
+) {
   const periodStart = toDate(input.periodStart);
   const periodEnd = toDate(input.periodEnd);
   const program = await prisma.rebateProgram.findFirst({ where: { id: programId, companyId: actor.companyId } });
@@ -132,43 +146,60 @@ export async function calculateRebate(actor: RebateActor, programId: string, inp
   if (periodStart < program.effectiveFrom || periodEnd > program.effectiveTo) {
     throw new ApiError(422, "PERIOD_OUTSIDE_PROGRAM", `The calculation period must fall inside the program's effective dates (${isoDate(program.effectiveFrom)} → ${isoDate(program.effectiveTo)}).`);
   }
-  const prefix = program.calculationMethod === "PRICE_PROTECTION" ? "RP" : "RB";
-  const reference = `${prefix}-${program.code}-${isoDate(periodEnd)}`.slice(0, 60);
-  const existing = await prisma.rebateCalculation.findFirst({ where: { companyId: actor.companyId, programId: program.id, periodStart, periodEnd }, select: { id: true } });
-  if (existing) throw new ApiError(409, "DUPLICATE_REBATE_CALCULATION", "This program already has a calculation for the period.");
+
+  const prefix = ["PRICE_PROTECTION", "COMPANY_PRICE_REDUCTION"].includes(program.calculationMethod) ? "RP" : "RB";
+  const uniqueSuffix = Date.now().toString().slice(-6);
+  const reference = `${prefix}-${program.code}-${isoDate(periodEnd)}-${uniqueSuffix}`.slice(0, 60);
 
   let eligibleQuantity = zero();
   let eligibleValue = zero();
   let calculatedAmount = zero();
   let calculationDetails: Prisma.InputJsonValue;
 
-  if (program.calculationMethod === "PRICE_PROTECTION") {
+  if (["PRICE_PROTECTION", "COMPANY_PRICE_REDUCTION"].includes(program.calculationMethod)) {
     if (!input.items || input.items.length === 0) {
       throw new ApiError(422, "ITEMS_REQUIRED", "Rate protection requires at least one product with eligible inventory and price drop.");
     }
-    for (const item of input.items) {
-      const qty = decimal(String(item.eligibleQuantity));
+    const processedItems = input.items.map((item) => {
+      const qty = decimal(String(item.claimedQuantity ?? item.eligibleQuantity));
       const oldP = decimal(String(item.oldPrice));
-      const claim = decimal(String(item.claimAmount));
+      const newP = decimal(String(item.newPrice));
+      const drop = oldP.minus(newP);
+      const claim = decimal(String(item.claimAmount || qty.mul(drop)));
       eligibleQuantity = eligibleQuantity.plus(qty);
       eligibleValue = eligibleValue.plus(qty.mul(oldP));
       calculatedAmount = calculatedAmount.plus(claim);
-    }
+
+      return {
+        ...item,
+        claimedQuantity: Number(qty),
+        remainingQuantity: Math.max(0, Number(item.eligibleQuantity) - Number(qty)),
+        priceDropPerUnit: Number(drop),
+        claimAmount: Number(claim),
+        approvedAmount: Number(claim),
+        outstandingAmount: Number(claim),
+        status: "PENDING",
+      };
+    });
+
     calculatedAmount = calculatedAmount.toDecimalPlaces(4);
     if (calculatedAmount.lte(0)) {
       throw new ApiError(422, "INVALID_CLAIM_AMOUNT", "The calculated rate protection claim amount must be greater than zero.");
     }
+
     calculationDetails = {
-      calculationMethod: "PRICE_PROTECTION",
-      items: input.items,
-      totalItems: input.items.length,
+      calculationMethod: program.calculationMethod,
+      title: input.title || `Price Protection Claim · ${program.name}`,
+      supportingDocRef: input.supportingDocRef || null,
+      remarks: input.remarks || null,
+      items: processedItems,
+      totalItems: processedItems.length,
       eligibleValue: eligibleValue.toDecimalPlaces(4).toString(),
       eligibleQuantity: eligibleQuantity.toDecimalPlaces(4).toString(),
       calculatedAmount: calculatedAmount.toString(),
+      submittedAt: input.submitImmediately ? new Date().toISOString() : null,
     };
   } else {
-    // Heavy eligibility reads run outside the write transaction so the single pooled connection is
-    // never held while scanning posted documents.
     const eligibility = await collectEligibility(program, periodStart, periodEnd);
     if (eligibility.value.lte(0)) throw new ApiError(422, "NO_ELIGIBLE_DOCUMENTS", "No posted documents in the period qualify for this rebate.");
     let calculated = zero();
@@ -185,8 +216,13 @@ export async function calculateRebate(actor: RebateActor, programId: string, inp
       documents: eligibility.documents,
       eligibleValue: eligibility.value.toDecimalPlaces(4).toString(),
       eligibleQuantity: eligibility.quantity.toDecimalPlaces(4).toString(),
+      calculatedAmount: calculatedAmount.toString(),
+      title: input.title || null,
+      remarks: input.remarks || null,
     };
   }
+
+  const initialStatus = input.submitImmediately ? RebateStatus.SUBMITTED : RebateStatus.CALCULATED;
 
   return prisma.$transaction(async (tx) => {
     const created = await tx.rebateCalculation.create({
@@ -204,12 +240,28 @@ export async function calculateRebate(actor: RebateActor, programId: string, inp
         approvedAmount: zero(),
         settledAmount: zero(),
         outstandingAmount: zero(),
-        status: RebateStatus.CALCULATED,
+        status: initialStatus,
         calculationDetails,
         calculatedById: actor.userId,
       },
     });
-    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, action: "REBATE_CALCULATED", module: "finance", entityType: "RebateCalculation", entityId: created.id, entityReference: reference, newValues: { eligibleValue: eligibleValue.toDecimalPlaces(4).toString(), calculatedAmount: calculatedAmount.toFixed(4) } }, tx);
+    await appendAudit(
+      {
+        companyId: actor.companyId,
+        actorId: actor.userId,
+        action: input.submitImmediately ? "REBATE_SUBMITTED" : "REBATE_CALCULATED",
+        module: "finance",
+        entityType: "RebateCalculation",
+        entityId: created.id,
+        entityReference: reference,
+        newValues: {
+          eligibleValue: eligibleValue.toDecimalPlaces(4).toString(),
+          calculatedAmount: calculatedAmount.toFixed(4),
+          status: initialStatus,
+        },
+      },
+      tx
+    );
     return created;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 60_000 });
 }
@@ -219,11 +271,66 @@ export async function approveRebate(actor: RebateActor, id: string) {
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "RebateCalculation" WHERE "id" = ${id}::uuid AND "companyId" = ${actor.companyId}::uuid FOR UPDATE`);
     const calculation = await tx.rebateCalculation.findFirst({ where: { id, companyId: actor.companyId } });
     if (!calculation) throw new ApiError(404, "REBATE_CALCULATION_NOT_FOUND", "Rebate calculation was not found.");
-    if (calculation.status !== RebateStatus.CALCULATED) throw new ApiError(409, "INVALID_REBATE_STATE", "Only a calculated rebate can be approved.");
+    if (calculation.status !== RebateStatus.CALCULATED && calculation.status !== RebateStatus.SUBMITTED) {
+      throw new ApiError(409, "INVALID_REBATE_STATE", "Only a calculated or submitted rebate can be approved.");
+    }
     await assertMakerChecker(tx, actor.companyId, calculation.calculatedById, actor.userId, "approve this rebate");
     if (calculation.calculatedAmount.lte(0)) throw new ApiError(422, "INVALID_REBATE_AMOUNT", "The rebate amount must be above zero.");
-    const updated = await tx.rebateCalculation.update({ where: { id }, data: { status: RebateStatus.APPROVED, approvedAmount: calculation.calculatedAmount, approvedById: actor.userId, approvedAt: new Date() } });
+
+    // Update item statuses inside JSON details if present
+    const details = (calculation.calculationDetails as Record<string, any>) || {};
+    if (Array.isArray(details.items)) {
+      details.items = details.items.map((item: any) => ({
+        ...item,
+        status: "APPROVED",
+        approvedQuantity: item.claimedQuantity ?? item.eligibleQuantity,
+        approvedAmount: item.claimAmount,
+      }));
+    }
+
+    const updated = await tx.rebateCalculation.update({
+      where: { id },
+      data: {
+        status: RebateStatus.APPROVED,
+        approvedAmount: calculation.calculatedAmount,
+        approvedById: actor.userId,
+        approvedAt: new Date(),
+        calculationDetails: details,
+      },
+    });
     await appendAudit({ companyId: actor.companyId, actorId: actor.userId, action: "REBATE_APPROVED", module: "finance", entityType: "RebateCalculation", entityId: id, entityReference: calculation.referenceNumber, newValues: { approvedAmount: calculation.calculatedAmount.toFixed(4) } }, tx);
+    return updated;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+}
+
+export async function rejectRebate(actor: RebateActor, id: string, reason: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "RebateCalculation" WHERE "id" = ${id}::uuid AND "companyId" = ${actor.companyId}::uuid FOR UPDATE`);
+    const calculation = await tx.rebateCalculation.findFirst({ where: { id, companyId: actor.companyId } });
+    if (!calculation) throw new ApiError(404, "REBATE_CALCULATION_NOT_FOUND", "Rebate calculation was not found.");
+    if (calculation.status !== RebateStatus.CALCULATED && calculation.status !== RebateStatus.SUBMITTED) {
+      throw new ApiError(409, "INVALID_REBATE_STATE", "Only a calculated or submitted rebate can be rejected.");
+    }
+    const details = (calculation.calculationDetails as Record<string, any>) || {};
+    if (Array.isArray(details.items)) {
+      details.items = details.items.map((item: any) => ({
+        ...item,
+        status: "REJECTED",
+        rejectionReason: reason,
+      }));
+    }
+    details.rejectionReason = reason;
+    details.rejectedById = actor.userId;
+    details.rejectedAt = new Date().toISOString();
+
+    const updated = await tx.rebateCalculation.update({
+      where: { id },
+      data: {
+        status: RebateStatus.REJECTED,
+        calculationDetails: details,
+      },
+    });
+    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, action: "REBATE_REJECTED", module: "finance", entityType: "RebateCalculation", entityId: id, entityReference: calculation.referenceNumber, newValues: { status: "REJECTED", reason } }, tx);
     return updated;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
 }
@@ -280,7 +387,19 @@ function receiptDirectionLabel(receivable: boolean) {
   return receivable ? "RECEIVABLE" : "PAYABLE";
 }
 
-export async function settleRebate(actor: RebateActor, id: string, input: { amount: string; settlementDate: string; paymentMethodId: string; bankAccountId?: string | null; reference?: string | null }) {
+export async function settleRebate(
+  actor: RebateActor,
+  id: string,
+  input: {
+    amount: string;
+    settlementDate: string;
+    paymentMethodId: string;
+    bankAccountId?: string | null;
+    reference?: string | null;
+    notes?: string | null;
+    itemAllocations?: Array<{ variantId: string; allocatedAmount: number }>;
+  }
+) {
   const settlementDate = toDate(input.settlementDate);
   const amount = decimal(input.amount);
   return prisma.$transaction(async (tx) => {
@@ -333,7 +452,44 @@ export async function settleRebate(actor: RebateActor, id: string, input: { amou
     const settledAmount = calculation.settledAmount.plus(amount);
     const outstandingAmount = calculation.approvedAmount.minus(settledAmount);
     const status = outstandingAmount.isZero() ? RebateStatus.SETTLED : RebateStatus.PARTIALLY_SETTLED;
-    const updated = await tx.rebateCalculation.update({ where: { id }, data: { settledAmount, outstandingAmount, status } });
+
+    // Update item-level settled amounts in calculationDetails if present
+    const details = (calculation.calculationDetails as Record<string, any>) || {};
+    if (Array.isArray(details.items)) {
+      if (input.itemAllocations && input.itemAllocations.length > 0) {
+        const allocMap = new Map(input.itemAllocations.map((a) => [a.variantId, a.allocatedAmount]));
+        details.items = details.items.map((item: any) => {
+          const alloc = allocMap.get(item.variantId) || 0;
+          const currentSettled = Number(item.settledAmount || 0) + alloc;
+          const remaining = Math.max(0, Number(item.approvedAmount || item.claimAmount) - currentSettled);
+          return {
+            ...item,
+            settledAmount: currentSettled,
+            outstandingAmount: remaining,
+            status: remaining === 0 ? "SETTLED" : "PARTIALLY_SETTLED",
+          };
+        });
+      } else {
+        // Proportionally allocate across items
+        const ratio = amount.div(calculation.approvedAmount).toNumber();
+        details.items = details.items.map((item: any) => {
+          const itemPortion = (Number(item.approvedAmount || item.claimAmount) * ratio);
+          const currentSettled = Number(item.settledAmount || 0) + itemPortion;
+          const remaining = Math.max(0, Number(item.approvedAmount || item.claimAmount) - currentSettled);
+          return {
+            ...item,
+            settledAmount: currentSettled,
+            outstandingAmount: remaining,
+            status: remaining <= 0.01 ? "SETTLED" : "PARTIALLY_SETTLED",
+          };
+        });
+      }
+    }
+
+    const updated = await tx.rebateCalculation.update({
+      where: { id },
+      data: { settledAmount, outstandingAmount, status, calculationDetails: details },
+    });
     await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId, action: receivable ? "REBATE_RECEIVED" : "REBATE_PAID", module: "finance", entityType: "RebateCalculation", entityId: id, entityReference: calculation.referenceNumber, newValues: { amount: amount.toFixed(4), outstanding: outstandingAmount.toFixed(4), method: settlement.methodCode, journal: journal.voucherNumber } }, tx);
     return { calculation: updated, journal };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });

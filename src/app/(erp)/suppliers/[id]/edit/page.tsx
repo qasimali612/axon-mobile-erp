@@ -7,3 +7,4 @@ export default async function EditSupplierPage({ params }: PageProps) {
   const id = idSchema.parse((await params).id);
   redirect(`/suppliers?edit=${id}`);
 }
+

@@ -7,3 +7,4 @@ export default async function EditProductPage({ params }: PageProps) {
   const id = idSchema.parse((await params).id);
   redirect(`/catalog/products?edit=${id}`);
 }
+

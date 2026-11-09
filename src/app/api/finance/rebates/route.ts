@@ -8,22 +8,54 @@ export async function GET() {
   try {
     const context = await requirePermission("REBATE_VIEW");
     const companyId = context.company.id;
-    const [programs, calculations, suppliers, customers, accounts, methods, bankAccounts, variants] = await Promise.all([
+    const [programs, calculations, suppliers, customers, accounts, methods, bankAccounts, variants, branches, warehouses] = await Promise.all([
       prisma.rebateProgram.findMany({
         where: { companyId },
-        include: { supplier: { select: { code: true, name: true } }, customer: { select: { code: true, name: true } }, primaryAccount: { select: { code: true, name: true } }, settlementAccount: { select: { code: true, name: true } }, _count: { select: { calculations: true } } },
+        include: {
+          supplier: { select: { id: true, code: true, name: true } },
+          customer: { select: { id: true, code: true, name: true } },
+          primaryAccount: { select: { id: true, code: true, name: true } },
+          settlementAccount: { select: { id: true, code: true, name: true } },
+          _count: { select: { calculations: true } },
+        },
         orderBy: [{ isActive: "desc" }, { code: "asc" }],
       }),
       prisma.rebateCalculation.findMany({
         where: { companyId },
         include: {
-          program: { select: { code: true, name: true, direction: true, calculationMethod: true, primaryAccountId: true, settlementAccountId: true } },
-          supplier: { select: { code: true, name: true } },
-          customer: { select: { code: true, name: true } },
+          program: { select: { code: true, name: true, direction: true, calculationMethod: true, primaryAccountId: true, settlementAccountId: true, rules: true } },
+          supplier: { select: { id: true, code: true, name: true } },
+          customer: { select: { id: true, code: true, name: true } },
           calculatedBy: { select: { fullName: true } },
           approvedBy: { select: { fullName: true } },
-          receivable: { include: { receipts: { select: { id: true, amount: true, receiptDate: true, receiptMethod: true, reference: true, journalEntry: { select: { voucherNumber: true } } } } } },
-          payable: { include: { payments: { select: { id: true, amount: true, paymentDate: true, paymentMethod: true, reference: true, journalEntry: { select: { voucherNumber: true } } } } } },
+          receivable: {
+            include: {
+              receipts: {
+                select: {
+                  id: true,
+                  amount: true,
+                  receiptDate: true,
+                  receiptMethod: true,
+                  reference: true,
+                  journalEntry: { select: { voucherNumber: true } },
+                },
+              },
+            },
+          },
+          payable: {
+            include: {
+              payments: {
+                select: {
+                  id: true,
+                  amount: true,
+                  paymentDate: true,
+                  paymentMethod: true,
+                  reference: true,
+                  journalEntry: { select: { voucherNumber: true } },
+                },
+              },
+            },
+          },
         },
         orderBy: [{ periodEnd: "desc" }, { createdAt: "desc" }],
         take: 300,
@@ -47,7 +79,10 @@ export async function GET() {
         orderBy: { name: "asc" },
         take: 1000,
       }),
+      prisma.branch.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+      prisma.warehouse.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true, branchId: true }, orderBy: { code: "asc" } }),
     ]);
+
     const products = variants.map((v) => ({
       variantId: v.id,
       productId: v.productId,
@@ -58,6 +93,23 @@ export async function GET() {
       purchasePrice: Number(v.purchasePrice),
       currentStock: Math.max(0, v.stockBalances.reduce((sum, b) => sum + Number(b.quantity), 0)),
     }));
-    return NextResponse.json(jsonSafe({ data: { programs, calculations }, lookups: { suppliers, customers, accounts, paymentMethods: methods, bankAccounts, products } }));
-  } catch (error) { return apiError(error); }
+
+    return NextResponse.json(
+      jsonSafe({
+        data: { programs, calculations },
+        lookups: {
+          suppliers,
+          customers,
+          accounts,
+          paymentMethods: methods,
+          bankAccounts,
+          products,
+          branches,
+          warehouses,
+        },
+      })
+    );
+  } catch (error) {
+    return apiError(error);
+  }
 }

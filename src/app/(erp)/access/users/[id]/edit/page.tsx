@@ -7,3 +7,4 @@ export default async function EditUserPage({ params }: PageProps) {
   const id = idSchema.parse((await params).id);
   redirect(`/access/users?edit=${id}`);
 }
+

@@ -8,3 +8,4 @@ export default async function NewReturnPage({
   const { type } = await searchParams;
   redirect(type ? `/returns?type=${type}&new=1` : "/returns?new=1");
 }
+

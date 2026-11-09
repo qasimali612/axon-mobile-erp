@@ -272,3 +272,4 @@ export default async function SupplierDetailPage({ params }: PageProps) {
     </div>
   );
 }
+
