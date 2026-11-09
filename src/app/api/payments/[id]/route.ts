@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
-import { apiError } from "@/lib/api";
+import { apiError, assertSameOrigin } from "@/lib/api";
 import { requirePermission } from "@/lib/auth";
+import { updatePaymentDraft } from "@/lib/operations/payments";
+import { paymentDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
+import { idSchema } from "@/lib/validation";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -181,6 +184,29 @@ export async function GET(_request: Request, { params }: RouteProps) {
     }
 
     return NextResponse.json(jsonSafe({ data: payment }));
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function PATCH(request: Request, { params }: RouteProps) {
+  try {
+    assertSameOrigin(request);
+    const { id } = await params;
+    const paymentId = idSchema.parse(id);
+    const context = await requirePermission("PAYMENT_CREATE");
+    const body = paymentDraftSchema.parse(await request.json());
+    const data = await updatePaymentDraft(
+      {
+        companyId: context.company.id,
+        userId: context.user.id,
+        currencyCode: context.company.currencyCode,
+        permissions: context.permissions,
+      },
+      paymentId,
+      body,
+    );
+    return NextResponse.json(jsonSafe({ data }));
   } catch (error) {
     return apiError(error);
   }

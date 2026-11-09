@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, assertSameOrigin } from "@/lib/api";
-import { requirePermission } from "@/lib/auth";
+import { apiError, ApiError, assertSameOrigin } from "@/lib/api";
+import { requireAuth } from "@/lib/auth";
 import { jsonSafe } from "@/lib/serializers";
 import {
   getOperatingModeConfig,
@@ -11,18 +11,21 @@ import {
 
 const updateModeSchema = z.object({
   mode: z.enum(["SINGLE_USER", "MULTI_USER"]),
-  reason: z.string().trim().min(5, "A reason of at least 5 characters is required."),
+  reason: z.string().trim().optional(),
 });
 
 export async function GET() {
   try {
-    const context = await requirePermission("dashboard.view");
+    const context = await requireAuth();
     const config = await getOperatingModeConfig(undefined, context.company.id);
 
     const canManage =
       context.permissions.includes("policy.manage") ||
       context.permissions.includes("company.manage") ||
-      context.permissions.includes("USER_MANAGE");
+      context.permissions.includes("USER_MANAGE") ||
+      context.permissions.includes("settings.manage") ||
+      context.permissions.includes("finance.manage") ||
+      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR"].includes(r.name));
 
     return NextResponse.json(
       jsonSafe({
@@ -40,8 +43,24 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const context = await requirePermission("policy.manage");
-    const body = updateModeSchema.parse(await request.json());
+    const context = await requireAuth();
+    const canManage =
+      context.permissions.includes("policy.manage") ||
+      context.permissions.includes("company.manage") ||
+      context.permissions.includes("USER_MANAGE") ||
+      context.permissions.includes("settings.manage") ||
+      context.permissions.includes("finance.manage") ||
+      context.roles.some((r) => ["OWNER", "SUPER_ADMIN", "ADMINISTRATOR"].includes(r.name));
+
+    if (!canManage) {
+      throw new ApiError(403, "FORBIDDEN", "You do not have permission to change the operating mode.");
+    }
+
+    const body = updateModeSchema.parse(await request.json().catch(() => ({})));
+    const reason =
+      body.reason && body.reason.trim().length >= 5
+        ? body.reason.trim()
+        : `Switched to ${body.mode === "SINGLE_USER" ? "Single-User Mode" : "Multi-User Mode"} via workspace quick toggle`;
 
     const updated = await setOperatingMode(
       {
@@ -50,7 +69,7 @@ export async function POST(request: Request) {
         fullName: context.user.fullName,
       },
       body.mode as OperatingMode,
-      body.reason
+      reason
     );
 
     return NextResponse.json(jsonSafe({ data: updated }));

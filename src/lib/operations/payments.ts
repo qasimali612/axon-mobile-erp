@@ -131,11 +131,146 @@ export async function createPaymentDraft(actor: PaymentActor, input: PaymentDraf
   );
 }
 
+export async function updatePaymentDraft(actor: PaymentActor, id: string, input: PaymentDraftInput) {
+  const paymentDate = parseOperationDate(input.paymentDate, "Payment date");
+  const amount = decimal(input.amount);
+  const allocations = input.allocations.map((allocation) => ({ ...allocation, amount: decimal(allocation.amount) }));
+  const allocated = allocations.reduce((sum, allocation) => sum.plus(allocation.amount), zero());
+  if (allocated.gt(amount)) throw new ApiError(422, "OVER_ALLOCATION", "Payment allocations exceed the payment amount.");
+  const expectedParty = paymentPartyKind(input.direction);
+  if (expectedParty === "customer" && (!input.customerId || input.supplierId)) throw new ApiError(422, "INVALID_PAYMENT_PARTY", "Customer receipts and refunds require one customer.");
+  if (expectedParty === "supplier" && (!input.supplierId || input.customerId)) throw new ApiError(422, "INVALID_PAYMENT_PARTY", "Supplier payments and refunds require one supplier.");
+
+  return prisma.$transaction(
+    async (tx) => {
+      const current = await lockPayment(tx, id, actor.companyId);
+      if (!current) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
+      if (
+        current.status === OperationalDocumentStatus.POSTED ||
+        current.status === OperationalDocumentStatus.REVERSED ||
+        current.status === OperationalDocumentStatus.CANCELLED
+      ) {
+        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Posted, reversed, or cancelled payment vouchers cannot be edited.");
+      }
+      if (current.status === OperationalDocumentStatus.APPROVED) {
+        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Approved payment vouchers cannot be edited directly. Please cancel the voucher or post it.");
+      }
+
+      const canEdit =
+        current.preparedById === actor.userId ||
+        !actor.permissions ||
+        actor.permissions.includes("PAYMENT_APPROVE") ||
+        actor.permissions.includes("PAYMENT_CREATE") ||
+        actor.permissions.includes("PAYMENT_POST") ||
+        actor.permissions.includes("finance.manage");
+      if (!canEdit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may edit this payment.");
+
+      // Revert parent status to DRAFT first so PaymentAllocation_parent_guard allows line changes
+      if (current.status === OperationalDocumentStatus.SUBMITTED) {
+        await tx.payment.update({
+          where: { id },
+          data: { status: OperationalDocumentStatus.DRAFT, approvedById: null, approvedAt: null },
+        });
+      }
+
+      let cashAccountId = input.cashAccountId || null;
+      let bankAccountId = input.bankAccountId || null;
+      let paymentMethodId: string | null = null;
+      if (input.paymentMethodId) {
+        const method = await tx.paymentMethod.findFirst({ where: { id: input.paymentMethodId, companyId: actor.companyId } });
+        if (!method) throw new ApiError(404, "PAYMENT_METHOD_NOT_FOUND", "The selected payment method was not found.");
+        if (!method.isActive) throw new ApiError(409, "PAYMENT_METHOD_INACTIVE", "The selected payment method is inactive.");
+        if (method.requiresReference && !input.reference) throw new ApiError(422, "PAYMENT_REFERENCE_REQUIRED", `${method.name} requires a reference number.`);
+        if (method.cashAccountId && cashAccountId && cashAccountId !== method.cashAccountId) throw new ApiError(422, "PAYMENT_METHOD_MISMATCH", `${method.name} settles into a different cash account.`);
+        if (method.bankAccountId && bankAccountId && bankAccountId !== method.bankAccountId) throw new ApiError(422, "PAYMENT_METHOD_MISMATCH", `${method.name} settles into a different bank account.`);
+        cashAccountId = method.cashAccountId ?? cashAccountId;
+        bankAccountId = method.bankAccountId ?? bankAccountId;
+        paymentMethodId = method.id;
+      }
+      if (Boolean(bankAccountId) === Boolean(cashAccountId)) throw new ApiError(422, "PAYMENT_SETTLEMENT_REQUIRED", "Choose a payment method or exactly one bank or cash account.");
+
+      const party = expectedParty === "customer"
+        ? await tx.customer.findFirst({ where: { id: input.customerId!, companyId: actor.companyId, status: "ACTIVE" } })
+        : await tx.supplier.findFirst({ where: { id: input.supplierId!, companyId: actor.companyId, status: "ACTIVE" } });
+      if (!party) throw new ApiError(404, "PARTY_NOT_FOUND", "The selected active payment party was not found.");
+
+      if (bankAccountId) {
+        const bank = await tx.bankAccount.findFirst({ where: { id: bankAccountId, companyId: actor.companyId, branchId: input.branchId, isActive: true } });
+        if (!bank) throw new ApiError(404, "BANK_ACCOUNT_NOT_FOUND", "The selected active bank account was not found in this branch.");
+        if (bank.currencyCode !== input.currencyCode) throw new ApiError(422, "CURRENCY_MISMATCH", "Payment and bank account currencies must match.");
+      } else {
+        const cash = await tx.account.findFirst({ where: { id: cashAccountId!, companyId: actor.companyId, accountType: "CASH", isActive: true, OR: [{ branchId: input.branchId }, { branchId: null }] } });
+        if (!cash) throw new ApiError(404, "CASH_ACCOUNT_NOT_FOUND", "The selected active cash account was not found in this branch.");
+        if (cash.currencyCode && cash.currencyCode !== input.currencyCode) throw new ApiError(422, "CURRENCY_MISMATCH", "Payment and cash account currencies must match.");
+      }
+
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
+
+      const updated = await tx.payment.update({
+        where: { id },
+        data: {
+          branchId: input.branchId,
+          customerId: input.customerId || null,
+          supplierId: input.supplierId || null,
+          bankAccountId,
+          cashAccountId,
+          paymentMethodId,
+          paymentDate,
+          direction: input.direction,
+          currencyCode: input.currencyCode,
+          amount,
+          reference: input.reference || null,
+          notes: input.notes || null,
+          preparedById: actor.userId,
+          status: OperationalDocumentStatus.DRAFT,
+          approvedById: null,
+          approvedAt: null,
+          allocations: {
+            create: allocations.map((allocation) => ({
+              salesInvoiceId: allocation.salesInvoiceId || null,
+              purchaseReceiptId: allocation.purchaseReceiptId || null,
+              amount: allocation.amount,
+            })),
+          },
+        },
+        include: { allocations: true },
+      });
+
+      await appendAudit({
+        companyId: actor.companyId,
+        actorId: actor.userId,
+        branchId: input.branchId,
+        action: "PAYMENT_DRAFT_UPDATED",
+        module: "finance",
+        entityType: "Payment",
+        entityId: id,
+        entityReference: updated.paymentNumber,
+        previousValues: { amount: moneyString(current.amount), status: current.status },
+        newValues: { amount: moneyString(updated.amount), status: updated.status },
+        metadata: { settlementSource: paymentMethodId ? "PAYMENT_METHOD" : "DIRECT_ACCOUNT" },
+      }, tx);
+
+      return updated;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
 export async function submitPayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const payment = await lockPayment(tx, id, actor.companyId);
     if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
-    if (payment.preparedById !== actor.userId) throw new ApiError(403, "NOT_PREPARER", "Only the preparer may submit this payment.");
+    if (payment.status === OperationalDocumentStatus.SUBMITTED) {
+      return payment;
+    }
+    const canSubmit =
+      payment.preparedById === actor.userId ||
+      !actor.permissions ||
+      actor.permissions.includes("PAYMENT_APPROVE") ||
+      actor.permissions.includes("PAYMENT_CREATE") ||
+      actor.permissions.includes("PAYMENT_POST") ||
+      actor.permissions.includes("finance.manage");
+    if (!canSubmit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may submit this payment.");
     if (payment.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft payment can be submitted.");
     const updated = await tx.payment.update({ where: { id }, data: { status: OperationalDocumentStatus.SUBMITTED } });
     await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: payment.branchId, action: "PAYMENT_SUBMITTED", module: "finance", entityType: "Payment", entityId: id, entityReference: payment.paymentNumber, previousValues: { status: payment.status }, newValues: { status: updated.status } }, tx);
@@ -201,7 +336,7 @@ export async function postPayment(actor: PaymentActor, id: string) {
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
       if (payment.status === OperationalDocumentStatus.POSTED) return payment;
       if (payment.status !== OperationalDocumentStatus.APPROVED || !payment.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved payment can be posted.");
-      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, payment.preparedById, payment.approvedById, "post this payment");
+      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, payment.preparedById, payment.approvedById, "post this payment", [], true);
       if ((payment.customer && payment.customer.status !== "ACTIVE") || (payment.supplier && payment.supplier.status !== "ACTIVE")) throw new ApiError(409, "PARTY_INACTIVE", "The payment party is no longer active.");
       await assertApprovalPolicy(tx, { actor, documentType: "PAYMENT", amount: payment.amount, entityType: "Payment", entityId: id, reference: payment.paymentNumber });
       await validateAllocations(tx, payment);
@@ -244,6 +379,7 @@ export async function postPayment(actor: PaymentActor, id: string) {
         idempotencyKey: `PAYMENT:${payment.id}`,
         narration: `${payment.direction.replaceAll("_", " ")} ${payment.paymentNumber} for ${partyDescription}`,
         referenceDocument: payment.reference || payment.paymentNumber,
+        allowApproverPosting: true,
         lines: incoming
           ? [
               { accountId: settlementAccountId, description: `Settlement received on ${payment.paymentNumber}`, debit: payment.amount, bankAccountId, ...common },

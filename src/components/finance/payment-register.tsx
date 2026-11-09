@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   BadgeCheck,
@@ -16,6 +17,7 @@ import {
   ChevronRight,
   CornerDownLeft,
   CreditCard,
+  Edit3,
   ExternalLink,
   Eye,
   FilePlus2,
@@ -131,6 +133,10 @@ export function PaymentRegister({
   const [targetId, setTargetId] = useState("");
   const [allocationAmount, setAllocationAmount] = useState("");
   const [docAllocations, setDocAllocations] = useState<Record<string, string>>({});
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editingPaymentNumber, setEditingPaymentNumber] = useState<string | null>(null);
+  const [segregationAlert, setSegregationAlert] = useState<{ payment: PaymentRow; message: string } | null>(null);
+  const [switchingMode, setSwitchingMode] = useState(false);
   const prefillApplied = useRef(false);
 
   const can = (key: string) => permissions.includes(key);
@@ -337,6 +343,117 @@ export function PaymentRegister({
     return list?.find((item: any) => item.id === partyId) || null;
   }, [partyId, isCustomer, lookups]);
 
+  async function startEdit(row: PaymentRow) {
+    try {
+      toast.loading(`Loading ${row.paymentNumber} for editing...`, { id: "edit-payment" });
+      const res = await fetch(`/api/payments/${row.id}`);
+      const body = await res.json().catch(() => null);
+      toast.dismiss("edit-payment");
+
+      const p = res.ok && body?.data ? body.data : row;
+
+      setEditingPaymentId(p.id);
+      setEditingPaymentNumber(p.paymentNumber);
+      setDirection(p.direction);
+
+      // Match branch
+      if (p.branchId) {
+        setBranchId(p.branchId);
+      } else if (p.branch?.code && lookups?.branches) {
+        const found = lookups.branches.find((b: any) => b.code === p.branch.code);
+        if (found) setBranchId(found.id);
+      }
+
+      // Match party
+      const pId = p.customerId || p.supplierId || (p.customer?.id || p.supplier?.id || "");
+      setPartyId(pId);
+      setPartySearch(p.customer?.name || p.supplier?.name || "");
+
+      // Amount & Date
+      setAmount(String(p.amount ?? ""));
+      setDate(p.paymentDate ? p.paymentDate.slice(0, 10) : new Date().toISOString().slice(0, 10));
+
+      // Account Choice
+      if (p.bankAccountId) {
+        setAccountChoice(`bank:${p.bankAccountId}`);
+        setSettlementFilter("BANK");
+      } else if (p.cashAccountId) {
+        setAccountChoice(`cash:${p.cashAccountId}`);
+        setSettlementFilter("CASH");
+      } else if (p.bankAccount?.id) {
+        setAccountChoice(`bank:${p.bankAccount.id}`);
+        setSettlementFilter("BANK");
+      } else if (p.cashAccount?.id) {
+        setAccountChoice(`cash:${p.cashAccount.id}`);
+        setSettlementFilter("CASH");
+      }
+
+      setReference(p.reference || "");
+      setNotes(p.notes || "");
+
+      // Populate allocations
+      if (Array.isArray(p.allocations) && p.allocations.length > 0) {
+        const newAlloc: Record<string, string> = {};
+        p.allocations.forEach((alloc: any) => {
+          const docId =
+            alloc.salesInvoiceId ||
+            alloc.salesInvoice?.id ||
+            alloc.purchaseReceiptId ||
+            alloc.purchaseReceipt?.id;
+          if (docId) {
+            newAlloc[docId] = String(Number(alloc.amount) || "");
+          }
+        });
+        setDocAllocations(newAlloc);
+      } else {
+        setDocAllocations({});
+      }
+
+      setOpen(true);
+      toast.info(`Editing ${p.paymentNumber} (${p.status})`);
+    } catch {
+      toast.dismiss("edit-payment");
+      toast.error("Failed to load payment for editing.");
+    }
+  }
+
+  async function resolveSegregationWithSingleUser(payment: PaymentRow) {
+    setSwitchingMode(true);
+    try {
+      const res = await fetch("/api/settings/operating-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "SINGLE_USER",
+          reason: "Switched to Single-User Mode to allow sole owner direct payment posting without segregation blockers",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.error?.message || "Failed to switch to Single-User Mode.");
+      }
+      setSegregationAlert(null);
+      toast.success("⚡ Single-User Mode activated! Posting payment to GL now...");
+      await directPost(payment);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to switch operating mode.");
+    } finally {
+      setSwitchingMode(false);
+    }
+  }
+
+  function isSegregationError(message: string): boolean {
+    const m = (message || "").toLowerCase();
+    return (
+      m.includes("segregation of duties") ||
+      m.includes("multi-user mode") ||
+      m.includes("separate authorized officer") ||
+      m.includes("maker_checker") ||
+      m.includes("cannot approve their own") ||
+      m.includes("cannot post their own")
+    );
+  }
+
   async function directPost(row: PaymentRow) {
     setActingId(row.id);
     try {
@@ -344,24 +461,44 @@ export function PaymentRegister({
         const subRes = await fetch(`/api/payments/${row.id}/submit`, { method: "POST" });
         if (!subRes.ok) {
           const body = await subRes.json().catch(() => null);
-          return toast.error(body?.error?.message || "Failed to submit payment draft.");
+          const msg = body?.error?.message || "Failed to submit payment draft.";
+          if (isSegregationError(msg)) {
+            setSegregationAlert({ payment: row, message: msg });
+            return;
+          }
+          return toast.error(msg);
         }
         const appRes = await fetch(`/api/payments/${row.id}/approve`, { method: "POST" });
         if (!appRes.ok) {
           const body = await appRes.json().catch(() => null);
-          return toast.error(body?.error?.message || "Failed to approve payment.");
+          const msg = body?.error?.message || "Failed to approve payment.";
+          if (isSegregationError(msg)) {
+            setSegregationAlert({ payment: row, message: msg });
+            return;
+          }
+          return toast.error(msg);
         }
       } else if (row.status === "SUBMITTED") {
         const appRes = await fetch(`/api/payments/${row.id}/approve`, { method: "POST" });
         if (!appRes.ok) {
           const body = await appRes.json().catch(() => null);
-          return toast.error(body?.error?.message || "Failed to approve payment.");
+          const msg = body?.error?.message || "Failed to approve payment.";
+          if (isSegregationError(msg)) {
+            setSegregationAlert({ payment: row, message: msg });
+            return;
+          }
+          return toast.error(msg);
         }
       }
       const postRes = await fetch(`/api/payments/${row.id}/post`, { method: "POST" });
       const body = await postRes.json().catch(() => null);
       if (!postRes.ok) {
-        return toast.error(body?.error?.message || "Failed to post payment.");
+        const msg = body?.error?.message || "Failed to post payment.";
+        if (isSegregationError(msg)) {
+          setSegregationAlert({ payment: row, message: msg });
+          return;
+        }
+        return toast.error(msg);
       }
       toast.success(`${row.paymentNumber} posted to GL!`, {
         action: {
@@ -387,7 +524,12 @@ export function PaymentRegister({
       const response = await fetch(`/api/payments/${row.id}/${action}`, { method: "POST" });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
-        return toast.error(body?.error?.message || `${titleCase(action)} failed.`);
+        const msg = body?.error?.message || `${titleCase(action)} failed.`;
+        if (isSegregationError(msg)) {
+          setSegregationAlert({ payment: row, message: msg });
+          return;
+        }
+        return toast.error(msg);
       }
       toast.success(`${row.paymentNumber} has been ${action}ed.`);
       void load();
@@ -469,61 +611,97 @@ export function PaymentRegister({
       .join(" · ") || null;
 
     try {
-      const response = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          branchId,
-          customerId: isCustomer ? partyId : null,
-          supplierId: isCustomer ? null : partyId,
-          bankAccountId: kind === "bank" ? accountId : null,
-          cashAccountId: kind === "cash" ? accountId : null,
-          paymentDate: date,
-          direction,
-          currencyCode: currency,
-          amount,
-          reference: effectiveReference,
-          notes: effectiveNotes,
-          idempotencyKey: crypto.randomUUID(),
-          allocations: finalAllocations,
-        }),
-      });
+      const payload = {
+        branchId,
+        customerId: isCustomer ? partyId : null,
+        supplierId: isCustomer ? null : partyId,
+        bankAccountId: kind === "bank" ? accountId : null,
+        cashAccountId: kind === "cash" ? accountId : null,
+        paymentDate: date,
+        direction,
+        currencyCode: currency,
+        amount,
+        reference: effectiveReference,
+        notes: effectiveNotes,
+        allocations: finalAllocations,
+      };
+
+      let response: Response;
+      let targetIdToPost = editingPaymentId;
+      let targetNumToPost = editingPaymentNumber;
+
+      if (editingPaymentId) {
+        response = await fetch(`/api/payments/${editingPaymentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        response = await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...payload,
+            idempotencyKey: crypto.randomUUID(),
+          }),
+        });
+      }
 
       const body = await response.json().catch(() => null);
       if (!response.ok) {
-        return toast.error(body?.error?.message || "Payment draft could not be created.");
+        return toast.error(
+          body?.error?.message ||
+            (editingPaymentId ? "Payment draft could not be updated." : "Payment draft could not be created.")
+        );
       }
 
       const created = body.data;
+      if (!targetIdToPost) {
+        targetIdToPost = created?.id;
+        targetNumToPost = created?.paymentNumber;
+      }
 
-      if (andPost) {
+      if (andPost && targetIdToPost) {
         try {
-          await fetch(`/api/payments/${created.id}/submit`, { method: "POST" });
-          await fetch(`/api/payments/${created.id}/approve`, { method: "POST" });
-          const postRes = await fetch(`/api/payments/${created.id}/post`, { method: "POST" });
+          const subRes = await fetch(`/api/payments/${targetIdToPost}/submit`, { method: "POST" });
+          const appRes = await fetch(`/api/payments/${targetIdToPost}/approve`, { method: "POST" });
+          const postRes = await fetch(`/api/payments/${targetIdToPost}/post`, { method: "POST" });
           if (postRes.ok) {
-            toast.success(`${created.paymentNumber} created and posted to GL successfully!`, {
+            toast.success(`${targetNumToPost || "Payment"} saved and posted to GL successfully!`, {
               action: {
                 label: "Print Voucher",
-                onClick: () => window.open(`/finance/payments/${created.id}/print`, "_blank"),
+                onClick: () => window.open(`/finance/payments/${targetIdToPost}/print`, "_blank"),
               },
               duration: 8000,
             });
           } else {
-            toast.success(`${created.paymentNumber} draft created & submitted for approval.`);
+            const postBody = await postRes.json().catch(() => null);
+            const msg = postBody?.error?.message || "Saved, but post requires separate checker review.";
+            if (isSegregationError(msg)) {
+              setSegregationAlert({
+                payment: created || ({ id: targetIdToPost, paymentNumber: targetNumToPost } as any),
+                message: msg,
+              });
+            } else {
+              toast.info(`${targetNumToPost || "Payment"} saved. ${msg}`);
+            }
           }
         } catch {
-          toast.success(`${created.paymentNumber} draft created.`);
+          toast.success(`${targetNumToPost || "Payment"} saved.`);
         }
       } else {
-        toast.success(`${created.paymentNumber} draft created successfully.`);
+        toast.success(
+          editingPaymentId
+            ? `${targetNumToPost || "Payment"} updated successfully.`
+            : `${created?.paymentNumber || "Payment"} draft created successfully.`
+        );
       }
 
       setOpen(false);
       resetForm();
       void load();
     } catch {
-      toast.error("Network error while creating payment.");
+      toast.error("Network error while saving payment.");
     } finally {
       setSaving(false);
       setIsPostingDirect(false);
@@ -531,6 +709,8 @@ export function PaymentRegister({
   }
 
   function resetForm() {
+    setEditingPaymentId(null);
+    setEditingPaymentNumber(null);
     setPartyId("");
     setPartySearch("");
     setTargetId("");
@@ -888,6 +1068,20 @@ export function PaymentRegister({
                           View
                         </Button>
 
+                        {/* Edit Draft / Submitted Payment */}
+                        {(row.status === "DRAFT" || row.status === "SUBMITTED") && can("PAYMENT_CREATE") ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void startEdit(row)}
+                            className="px-2 text-slate-700 hover:text-blue-700 hover:border-blue-300 gap-1"
+                            title="Edit this payment draft"
+                          >
+                            <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+                            Edit
+                          </Button>
+                        ) : null}
+
                         {/* Fast-Track Direct Post for Authorized Cashier / Manager */}
                         {(row.status === "DRAFT" || row.status === "SUBMITTED") && can("PAYMENT_POST") ? (
                           <Button
@@ -1180,6 +1374,20 @@ export function PaymentRegister({
                     <Printer className="h-4 w-4" />
                     Print Voucher
                   </Link>
+                  {(selectedPayment.status === "DRAFT" || selectedPayment.status === "SUBMITTED") && can("PAYMENT_CREATE") && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const p = selectedPayment;
+                        setSelectedPayment(null);
+                        void startEdit(p);
+                      }}
+                      className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Edit Voucher
+                    </Button>
+                  )}
                   {(selectedPayment.status === "DRAFT" || selectedPayment.status === "SUBMITTED") && can("PAYMENT_POST") && (
                     <Button
                       onClick={() => void directPost(selectedPayment)}
@@ -1242,7 +1450,9 @@ export function PaymentRegister({
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-lg font-bold text-slate-950">
-                      {direction === "CUSTOMER_RECEIPT"
+                      {editingPaymentNumber
+                        ? `Edit Voucher #${editingPaymentNumber}`
+                        : direction === "CUSTOMER_RECEIPT"
                         ? "New Customer Receipt"
                         : direction === "SUPPLIER_PAYMENT"
                         ? "New Supplier Payment"
@@ -1267,7 +1477,9 @@ export function PaymentRegister({
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {direction === "CUSTOMER_RECEIPT"
+                    {editingPaymentId
+                      ? "Modify settlement account, party, amount, or document allocations before posting to GL."
+                      : direction === "CUSTOMER_RECEIPT"
                       ? "Receive cash or bank transfer from customer with direct AR ledger settlement."
                       : direction === "SUPPLIER_PAYMENT"
                       ? "Disburse funds to supplier against purchase bills or on-account advance."
@@ -1279,7 +1491,10 @@ export function PaymentRegister({
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  resetForm();
+                }}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X className="h-5 w-5" />
@@ -1957,7 +2172,14 @@ export function PaymentRegister({
                   © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
                 </span>
                 <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setOpen(false);
+                      resetForm();
+                    }}
+                  >
                     Cancel
                   </Button>
                   <Button
@@ -1968,16 +2190,24 @@ export function PaymentRegister({
                     className="gap-1.5"
                   >
                     <FilePlus2 className="h-4 w-4" />
-                    {saving && !isPostingDirect ? "Saving draft..." : "Save as Draft"}
+                    {saving && !isPostingDirect
+                      ? "Saving..."
+                      : editingPaymentId
+                      ? "Update Draft"
+                      : "Save as Draft"}
                   </Button>
                   <Button
                     type="button"
                     disabled={saving}
                     onClick={(e) => void handleCreate(e, true)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm font-semibold"
                   >
                     <Zap className="h-4 w-4" />
-                    {saving && isPostingDirect ? "Posting to GL..." : "⚡ Save & Post Voucher"}
+                    {saving && isPostingDirect
+                      ? "Posting to GL..."
+                      : editingPaymentId
+                      ? "⚡ Update & Post Voucher"
+                      : "⚡ Save & Post Voucher"}
                   </Button>
                 </div>
               </div>
@@ -1985,6 +2215,76 @@ export function PaymentRegister({
           </div>
         </div>
       ) : null}
+
+      {/* SEGREGATION OF DUTIES QUICK RESOLUTION MODAL */}
+      {segregationAlert && (
+        <div
+          className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !switchingMode) setSegregationAlert(null);
+          }}
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200 animate-scale-up">
+            <div className="flex items-start gap-3.5 border-b border-amber-100 bg-amber-50/80 px-6 py-4">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-950">Segregation of Duties Enforcement</h3>
+                <p className="mt-0.5 text-xs text-amber-900 font-medium">Multi-User Maker-Checker Restriction</p>
+              </div>
+              <button
+                type="button"
+                disabled={switchingMode}
+                onClick={() => setSegregationAlert(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 p-6 text-xs text-slate-600 leading-relaxed">
+              <p>
+                ERP governance policy requires that in <strong>Multi-User Mode</strong>, a separate authorized officer must approve or post payment voucher <strong>{segregationAlert.payment.paymentNumber}</strong>.
+              </p>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 text-slate-700">
+                <span className="font-bold text-amber-900 block mb-1">⚡ Operating as Sole Business Owner or Store Manager?</span>
+                You can switch to <strong>Single-User Mode</strong> with 1 click. Single-User Mode enables direct approvals and immediate posting across all receipts, payments, and sales invoices without requiring a second officer.
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={switchingMode}
+                onClick={() => setSegregationAlert(null)}
+              >
+                Keep Multi-User Mode
+              </Button>
+              <Button
+                type="button"
+                disabled={switchingMode}
+                onClick={() => void resolveSegregationWithSingleUser(segregationAlert.payment)}
+                className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 shadow-sm font-bold"
+              >
+                {switchingMode ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Activating Single-User Mode...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4" />
+                    Switch to Single-User Mode &amp; Post Now
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

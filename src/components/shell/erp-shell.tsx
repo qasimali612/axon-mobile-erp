@@ -11,6 +11,7 @@ import {
   Boxes,
   Building2,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +20,7 @@ import {
   FileClock,
   LayoutDashboard,
   Landmark,
+  Loader2,
   ChartNoAxesCombined,
   WalletCards,
   BadgeDollarSign,
@@ -35,6 +37,7 @@ import {
   Users,
   Warehouse,
   X,
+  Zap,
   LogOut,
   Settings2,
   Tags,
@@ -271,6 +274,38 @@ export function ErpShell({ context, branches, notifications, children }: { conte
   const [switching, setSwitching] = useState(false);
   const [localNotifications, setLocalNotifications] = useState(notifications);
   const [operatingMode, setOperatingMode] = useState<"SINGLE_USER" | "MULTI_USER" | null>(null);
+  const [modeModalOpen, setModeModalOpen] = useState(false);
+  const [modeSwitching, setModeSwitching] = useState(false);
+
+  async function toggleOperatingMode(targetMode: "SINGLE_USER" | "MULTI_USER") {
+    setModeSwitching(true);
+    try {
+      const res = await fetch("/api/settings/operating-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: targetMode,
+          reason: targetMode === "SINGLE_USER"
+            ? "Switched to Single-User Mode for sole operator direct approvals and posting"
+            : "Switched to Multi-User Mode for enterprise maker-checker controls",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message || "Failed to switch operating mode.");
+      setOperatingMode(targetMode);
+      setModeModalOpen(false);
+      toast.success(
+        targetMode === "SINGLE_USER"
+          ? "⚡ Single-User Mode activated! You can now create, approve, and post receipts, payments, and invoices directly."
+          : "Enterprise Multi-User Mode activated. Strict segregation of duties is now enforced."
+      );
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to switch operating mode.");
+    } finally {
+      setModeSwitching(false);
+    }
+  }
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -450,27 +485,25 @@ export function ErpShell({ context, branches, notifications, children }: { conte
 
           <div className="flex items-center gap-1.5 sm:gap-2">
             {operatingMode ? (
-              <Link
-                href="/settings/controls"
-                title={
-                  operatingMode === "SINGLE_USER"
-                    ? "Operating in Single-User Mode: Sole operator direct execution"
-                    : "Operating in Multi-User Mode: Enterprise maker-checker active"
-                }
+              <button
+                type="button"
+                onClick={() => setModeModalOpen(true)}
+                title="Click to view or switch operating mode (Single-User vs Enterprise Multi-User)"
                 className={cn(
-                  "hidden lg:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition border shadow-xs",
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition border shadow-xs cursor-pointer hover:shadow-sm",
                   operatingMode === "SINGLE_USER"
-                    ? "bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100/80"
-                    : "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100/80"
+                    ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+                    : "bg-blue-50 text-blue-900 border-blue-300 hover:bg-blue-100"
                 )}
               >
                 {operatingMode === "SINGLE_USER" ? (
-                  <User className="h-3 w-3 text-amber-700" />
+                  <Zap className="h-3 w-3 text-amber-600 fill-amber-500" />
                 ) : (
-                  <Users className="h-3 w-3 text-blue-700" />
+                  <Users className="h-3 w-3 text-blue-600" />
                 )}
-                <span>{operatingMode === "SINGLE_USER" ? "Single-User Mode" : "Multi-User Mode"}</span>
-              </Link>
+                <span className="hidden sm:inline">{operatingMode === "SINGLE_USER" ? "Single-User Mode" : "Multi-User Mode"}</span>
+                <span className="sm:hidden">{operatingMode === "SINGLE_USER" ? "1-User" : "Multi"}</span>
+              </button>
             ) : null}
 
             <button onClick={() => setSearchOpen(true)} className="hidden h-9 w-[220px] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-left text-xs text-slate-400 transition hover:border-slate-300 hover:bg-white md:flex">
@@ -556,6 +589,162 @@ export function ErpShell({ context, branches, notifications, children }: { conte
               {!recordSearchLoading && recordSearchGroups.map((group) => <section key={group.type} className="mt-1 border-t border-slate-100 pt-1"><p className="px-3 py-2 text-[9px] font-bold uppercase tracking-[.16em] text-slate-400">{group.label}</p>{group.items.map((item) => { const Icon = globalSearchIcons[item.type] || Search; return <Link key={`${item.type}-${item.id}`} href={item.href} onClick={() => { setSearchOpen(false); setSearch(""); setRecordSearchGroups([]); }} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-blue-50/60"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600"><Icon className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-800">{item.title}</span><span className="mt-0.5 block truncate text-[10px] text-slate-400">{item.subtitle}</span></span>{item.badge ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">{item.badge.replaceAll("_", " ")}</span> : null}<ChevronRight className="h-4 w-4 text-blue-600"/></Link>; })}</section>)}
               {!recordSearchLoading && search.trim().length >= 2 && !searchResults.length && !recordSearchGroups.length ? <div className="px-3 py-12 text-center"><Search className="mx-auto h-7 w-7 text-slate-300"/><p className="mt-3 text-sm font-bold text-slate-600">No permitted records match “{search}”</p><p className="mt-1 text-xs text-slate-400">Try an IMEI, SKU, barcode, document number, customer, or supplier.</p></div> : null}
               {search.trim().length < 2 ? <p className="border-t px-3 py-4 text-center text-xs text-slate-400">Type at least two characters to search live business records. Press Ctrl/Cmd + K from anywhere.</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {modeModalOpen ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-xs animate-fade-in" onMouseDown={(e) => e.target === e.currentTarget && !modeSwitching && setModeModalOpen(false)}>
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-forest-50 text-forest-700">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">ERP Operating Mode</h3>
+                  <p className="text-xs text-slate-500">Configure authorization &amp; maker-checker controls</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={modeSwitching}
+                onClick={() => setModeModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 leading-relaxed border border-slate-100">
+                Operating mode governs segregation-of-duties and maker-checker validation. If you run your business as a sole proprietor or with a lean team, switch to <strong>Single-User Mode</strong> to approve and post your own vouchers without requiring a second officer.
+              </div>
+
+              {/* Single User Mode Card */}
+              <div
+                className={cn(
+                  "relative rounded-xl border-2 p-4 transition text-left",
+                  operatingMode === "SINGLE_USER"
+                    ? "border-amber-400 bg-amber-50/40 ring-1 ring-amber-300"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-800">
+                      <Zap className="h-5 w-5 fill-amber-500 text-amber-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">Single-User Mode</h4>
+                        {operatingMode === "SINGLE_USER" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                            <CheckCircle2 className="h-3 w-3 text-amber-700" /> ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Sole Owner / Rapid Execution</p>
+                    </div>
+                  </div>
+                  {operatingMode !== "SINGLE_USER" && (
+                    <button
+                      type="button"
+                      disabled={modeSwitching}
+                      onClick={() => toggleOperatingMode("SINGLE_USER")}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition disabled:opacity-50"
+                    >
+                      {modeSwitching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                      Switch to 1-User
+                    </button>
+                  )}
+                </div>
+                <ul className="mt-3 space-y-1 text-xs text-slate-600 pl-1">
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-forest-600 shrink-0" />
+                    <span>Post &amp; approve receipts, payments, and journals immediately</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-forest-600 shrink-0" />
+                    <span>No &quot;Segregation of duties&quot; blockers on your own records</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-forest-600 shrink-0" />
+                    <span>Streamlined 1-step voucher workflow for fast daily counter sales</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Multi User Mode Card */}
+              <div
+                className={cn(
+                  "relative rounded-xl border-2 p-4 transition text-left",
+                  operatingMode === "MULTI_USER"
+                    ? "border-blue-400 bg-blue-50/40 ring-1 ring-blue-300"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-100 text-blue-800">
+                      <Users className="h-5 w-5 text-blue-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-900">Multi-User Mode</h4>
+                        {operatingMode === "MULTI_USER" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
+                            <CheckCircle2 className="h-3 w-3 text-blue-700" /> ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">Enterprise / Maker-Checker Controls</p>
+                    </div>
+                  </div>
+                  {operatingMode !== "MULTI_USER" && (
+                    <button
+                      type="button"
+                      disabled={modeSwitching}
+                      onClick={() => toggleOperatingMode("MULTI_USER")}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition disabled:opacity-50"
+                    >
+                      {modeSwitching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                      Switch to Multi-User
+                    </button>
+                  )}
+                </div>
+                <ul className="mt-3 space-y-1 text-xs text-slate-600 pl-1">
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    <span>Enforces dual authorization (maker cannot self-approve or post)</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    <span>Full corporate audit trail with separate prepared/approved/posted by</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    <span>Ideal for multi-branch organizations with accountant oversight</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-5 py-3">
+              <Link
+                href="/settings/controls"
+                onClick={() => setModeModalOpen(false)}
+                className="text-xs font-semibold text-forest-700 hover:text-forest-800 hover:underline"
+              >
+                Open Advanced Security Controls →
+              </Link>
+              <button
+                type="button"
+                onClick={() => setModeModalOpen(false)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

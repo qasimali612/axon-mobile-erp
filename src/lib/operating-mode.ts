@@ -187,13 +187,14 @@ export async function assertSegregationOfDuties(
   preparerId: string | null | undefined,
   approverId?: string | null | undefined,
   actionDescription: string = "post this document",
-  otherRestrictedIds: (string | null | undefined)[] = []
+  otherRestrictedIds: (string | null | undefined)[] = [],
+  allowApprover = false,
 ) {
   const singleUser = await isSingleUserMode(tx, companyId);
   if (singleUser) return; // Permitted in single-user mode!
 
   const restricted = new Set(
-    [preparerId, approverId, ...otherRestrictedIds].filter((id): id is string => Boolean(id))
+    [preparerId, ...(allowApprover ? [] : [approverId]), ...otherRestrictedIds].filter((id): id is string => Boolean(id))
   );
 
   if (restricted.has(actorId)) {
