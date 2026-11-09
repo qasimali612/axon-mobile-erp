@@ -74,6 +74,11 @@ export async function PUT(request: Request, { params }: Params) {
           creditLimit: body.creditLimit,
           paymentTermsDays: body.paymentTermsDays,
           priceListId: body.priceListId || null,
+          status: body.status || existing.status,
+        },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+          priceList: { select: { id: true, code: true, name: true, priceLevel: true } },
         },
       });
 

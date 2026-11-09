@@ -271,6 +271,7 @@ export const customerDraftSchema = z.object({
   creditLimit: nonnegativeMoney.default("0"),
   paymentTermsDays: z.number().int().min(0).max(3650).default(0),
   priceListId: operationUuid.optional().nullable(),
+  status: z.enum(["ACTIVE", "ON_HOLD", "INACTIVE", "ARCHIVED"]).optional().default("ACTIVE"),
 });
 
 export const supplierDraftSchema = z.object({

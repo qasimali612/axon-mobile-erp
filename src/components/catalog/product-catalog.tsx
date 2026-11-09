@@ -599,7 +599,31 @@ export function ProductCatalog({
                     return (
                       <tr key={product.id} className="group hover:bg-slate-50/60">
                         <td className="table-cell"><div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500">{["SMARTPHONE", "FEATURE_PHONE", "TABLET"].includes(product.productType) ? <Smartphone className="h-[18px] w-[18px]" /> : <PackageOpen className="h-[18px] w-[18px]" />}</span><div><p className="max-w-[260px] truncate font-semibold text-slate-800">{product.name}</p><p className="mt-1 font-mono text-[10px] text-slate-400">{product.sku}{product.modelCode ? ` · ${product.modelCode}` : ""}</p></div></div></td>
-                        <td className="table-cell"><p className="text-xs font-medium text-slate-700">{variant?.name || "No variant"}{product.variants.length > 1 ? <span className="ml-1 text-[9px] font-bold text-blue-600">+{product.variants.length - 1} more</span> : null}</p><p className="mt-1 text-[10px] text-slate-400">{[variant?.color, variant?.ramGb ? `${variant.ramGb} GB RAM` : null, variant?.storageGb ? `${variant.storageGb} GB` : null].filter(Boolean).join(" · ") || "—"}</p>{barcode ? <p className="mt-1 flex items-center gap-1 font-mono text-[9px] text-slate-400"><Barcode className="h-3 w-3" />{barcode.barcode}</p> : null}</td>
+                        <td className="table-cell">
+                          <p className="text-xs font-semibold text-slate-800">{variant?.name || "No variant"}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">
+                            {[variant?.color, variant?.ramGb ? `${variant.ramGb} GB RAM` : null, variant?.storageGb ? `${variant.storageGb} GB` : null]
+                              .filter(Boolean)
+                              .join(" · ") || "Standard"}
+                          </p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setVariantProduct(product)}
+                              className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 hover:bg-blue-100 hover:border-blue-300"
+                              title="Click to view and add variations"
+                            >
+                              <Layers className="h-3 w-3" />
+                              {product.variants.length} {product.variants.length === 1 ? "variant" : "variants"} · Manage
+                            </button>
+                            {barcode ? (
+                              <span className="flex items-center gap-1 font-mono text-[9px] text-slate-400">
+                                <Barcode className="h-3 w-3" />
+                                {barcode.barcode}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td className="table-cell"><Badge tone={product.trackingMethod === "IMEI" ? "green" : product.trackingMethod === "BATCH" ? "amber" : "slate"}>{titleCase(product.trackingMethod)}</Badge></td>
                         <td className="table-cell"><p className="text-xs text-slate-600">{product.category.name}</p><p className="mt-1 text-[10px] text-slate-400">{product.brand?.name || "Unbranded"}</p></td>
                         {canViewCost ? <td className="table-cell text-right font-mono text-xs text-slate-600">{formatMoney(variant?.purchasePrice || 0, currency)}</td> : null}
@@ -1066,16 +1090,457 @@ export function ProductCatalog({
 
 type VariantDraft = { sku: string; name: string; color: string; ramGb: string; storageGb: string; networkType: string; simConfiguration: string; regionVariant: string; purchasePrice: string; wholesalePrice: string; retailPrice: string; minimumSellingPrice: string; isActive: boolean; barcodeText: string };
 const blankVariant = (): VariantDraft => ({ sku: "", name: "", color: "", ramGb: "", storageGb: "", networkType: "", simConfiguration: "", regionVariant: "", purchasePrice: "0", wholesalePrice: "0", retailPrice: "0", minimumSellingPrice: "0", isActive: true, barcodeText: "" });
-function VariantManager({ product: initial, currency, canViewCost, canChangePrice, onClose, onChanged }: { product: Product | null; currency: string; canViewCost: boolean; canChangePrice: boolean; onClose: () => void; onChanged: () => Promise<void> }) {
-  const [product, setProduct] = useState<Product | null>(initial); const [editing, setEditing] = useState<Variant | "new" | null>(null); const [draft, setDraft] = useState<VariantDraft>(blankVariant()); const [saving, setSaving] = useState(false);
-  useEffect(() => { setProduct(initial); setEditing(null); }, [initial]);
-  function openVariant(variant: Variant | "new") { setEditing(variant); if (variant === "new") setDraft(blankVariant()); else { const barcodes = (product?.barcodes || []).filter((item) => item.variantId === variant.id).sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)); setDraft({ sku: variant.sku, name: variant.name, color: variant.color || "", ramGb: variant.ramGb?.toString() || "", storageGb: variant.storageGb?.toString() || "", networkType: variant.networkType || "", simConfiguration: variant.simConfiguration || "", regionVariant: variant.regionVariant || "", purchasePrice: variant.purchasePrice, wholesalePrice: variant.wholesalePrice, retailPrice: variant.retailPrice, minimumSellingPrice: variant.minimumSellingPrice, isActive: variant.isActive, barcodeText: barcodes.map((item) => item.barcode).join("\n") }); } }
-  function patch(key: keyof VariantDraft, value: string | boolean) { setDraft((current) => ({ ...current, [key]: value })); }
-  async function refresh() { if (!product) return; const response = await fetch(`/api/products/${product.id}`); if (response.ok) { const body = await response.json(); setProduct(body.data); } await onChanged(); }
-  async function saveVariant(event: React.FormEvent) { event.preventDefault(); if (!product || !editing) return; const barcodes = draft.barcodeText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((barcode, index) => ({ barcode, type: barcode.length === 13 ? "EAN13" : "CODE128", isPrimary: index === 0 })); const { barcodeText: _barcodeText, ...fields } = draft; void _barcodeText; const payload = { ...fields, ramGb: draft.ramGb ? Number(draft.ramGb) : null, storageGb: draft.storageGb ? Number(draft.storageGb) : null, barcodes }; setSaving(true); const response = await fetch(editing === "new" ? `/api/products/${product.id}/variants` : `/api/products/${product.id}/variants/${editing.id}`, { method: editing === "new" ? "POST" : "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); setSaving(false); if (!response.ok) return toast.error(await responseError(response)); toast.success(editing === "new" ? "Variant created" : "Variant updated"); setEditing(null); await refresh(); }
-  return <><Modal open={Boolean(initial)} onClose={onClose} title={product ? `${product.sku} · ${product.name}` : "Product variants"} description="Maintain every sellable configuration and its scanner barcodes." size="xl">{product ? <div className="space-y-4 p-5"><div className="flex justify-end">{canChangePrice ? <Button onClick={() => openVariant("new")}><Plus className="h-4 w-4"/>Add variant</Button> : null}</div><div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[860px] text-left text-xs"><thead className="bg-slate-50 text-[9px] uppercase text-slate-400"><tr><th className="px-4 py-3">Variant</th><th className="px-4 py-3">Configuration</th><th className="px-4 py-3">Barcodes</th>{canViewCost ? <th className="px-4 py-3 text-right">Cost</th> : null}<th className="px-4 py-3 text-right">Retail / minimum</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y">{product.variants.map((variant) => { const barcodes = product.barcodes.filter((item) => item.variantId === variant.id); return <tr key={variant.id}><td className="px-4 py-3"><b>{variant.name}</b><small className="block font-mono text-slate-400">{variant.sku}</small></td><td className="px-4 py-3 text-slate-500">{[variant.color, variant.ramGb ? `${variant.ramGb} GB RAM` : null, variant.storageGb ? `${variant.storageGb} GB` : null, variant.networkType].filter(Boolean).join(" · ") || "—"}</td><td className="px-4 py-3 font-mono text-[9px]">{barcodes.map((item) => item.barcode).join(" · ") || "—"}</td>{canViewCost ? <td className="px-4 py-3 text-right">{formatMoney(variant.purchasePrice, currency)}</td> : null}<td className="px-4 py-3 text-right"><b>{formatMoney(variant.retailPrice, currency)}</b><small className="block text-slate-400">Min {formatMoney(variant.minimumSellingPrice, currency)}</small></td><td className="px-4 py-3"><Badge tone={variant.isActive ? "green" : "slate"}>{variant.isActive ? "Active" : "Inactive"}</Badge></td><td className="px-4 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openVariant(variant)}>Edit</Button></td></tr>; })}</tbody></table></div></div> : null}</Modal>
-    <Modal open={Boolean(editing)} onClose={() => setEditing(null)} title={editing === "new" ? "Add product variant" : "Edit product variant"} description="SKU and every barcode must remain unique company-wide." size="lg"><form onSubmit={saveVariant} className="space-y-4 p-5"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><Field label="Variant SKU" required><input className="input uppercase" value={draft.sku} onChange={(event) => patch("sku", event.target.value.toUpperCase())} required/></Field><Field label="Name" required wide><input className="input" value={draft.name} onChange={(event) => patch("name", event.target.value)} required/></Field><Field label="Color"><input className="input" value={draft.color} onChange={(event) => patch("color", event.target.value)}/></Field><Field label="RAM GB"><input type="number" min="0" className="input" value={draft.ramGb} onChange={(event) => patch("ramGb", event.target.value)}/></Field><Field label="Storage GB"><input type="number" min="0" className="input" value={draft.storageGb} onChange={(event) => patch("storageGb", event.target.value)}/></Field><Field label="Network"><input className="input" value={draft.networkType} onChange={(event) => patch("networkType", event.target.value)}/></Field><Field label="SIM configuration"><input className="input" value={draft.simConfiguration} onChange={(event) => patch("simConfiguration", event.target.value)}/></Field><Field label="Region"><input className="input" value={draft.regionVariant} onChange={(event) => patch("regionVariant", event.target.value)}/></Field><Field label="Purchase cost"><MoneyInput value={draft.purchasePrice} onChange={(value) => patch("purchasePrice", value)} disabled={!canViewCost}/></Field><Field label="Wholesale"><MoneyInput value={draft.wholesalePrice} onChange={(value) => patch("wholesalePrice", value)} disabled={!canChangePrice}/></Field><Field label="Retail"><MoneyInput value={draft.retailPrice} onChange={(value) => patch("retailPrice", value)} disabled={!canChangePrice}/></Field><Field label="Minimum"><MoneyInput value={draft.minimumSellingPrice} onChange={(value) => patch("minimumSellingPrice", value)} disabled={!canChangePrice}/></Field></div><label className="block text-xs font-semibold">Barcodes — one per line; first is primary<textarea className="mt-1.5 min-h-20 w-full rounded-lg border p-3 font-mono text-xs" value={draft.barcodeText} onChange={(event) => patch("barcodeText", event.target.value)}/></label><label className="flex items-center gap-2 rounded-lg border p-3 text-xs font-semibold"><input type="checkbox" checked={draft.isActive} onChange={(event) => patch("isActive", event.target.checked)}/>Active and selectable</label><div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="ghost" onClick={() => setEditing(null)}>Close</Button><Button type="submit" loading={saving}>{editing === "new" ? "Create variant" : "Save variant"}</Button></div></form></Modal>
-  </>;
+function VariantManager({
+  product: initial,
+  currency,
+  canViewCost,
+  canChangePrice: _canChangePrice,
+  onClose,
+  onChanged,
+}: {
+  product: Product | null;
+  currency: string;
+  canViewCost: boolean;
+  canChangePrice: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [product, setProduct] = useState<Product | null>(initial);
+  const [editing, setEditing] = useState<Variant | "new" | null>(null);
+  const [draft, setDraft] = useState<VariantDraft>(blankVariant());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setProduct(initial);
+    setEditing(null);
+  }, [initial]);
+
+  function autoGenSku() {
+    if (!product) return;
+    const base = product.sku || "PRD";
+    const colorPart = (draft.color || "STD").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3);
+    const storagePart = draft.storageGb ? `${draft.storageGb}G` : "STD";
+    const rand = Math.floor(10 + Math.random() * 90);
+    const generated = `${base}-${storagePart}-${colorPart}-${rand}`;
+    patch("sku", generated);
+    toast.success(`Generated SKU: ${generated}`);
+  }
+
+  function autoGenBarcode() {
+    const prefix = "890";
+    const middle = Math.floor(100000000 + Math.random() * 900000000).toString();
+    const code12 = prefix + middle.slice(0, 9);
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+      sum += parseInt(code12[i], 10) * (i % 2 === 0 ? 1 : 3);
+    }
+    const checkDigit = (10 - (sum % 10)) % 10;
+    const barcode = `${code12}${checkDigit}`;
+    patch("barcodeText", draft.barcodeText ? `${draft.barcodeText}\n${barcode}` : barcode);
+    toast.success(`Generated Barcode: ${barcode}`);
+  }
+
+  function suggestName() {
+    if (!product) return;
+    const parts = [
+      product.name,
+      draft.storageGb ? `${draft.storageGb}GB` : null,
+      draft.ramGb ? `${draft.ramGb}GB RAM` : null,
+      draft.color || null,
+      draft.regionVariant || null,
+    ].filter(Boolean);
+    const suggested = parts.join(" ");
+    patch("name", suggested);
+    toast.success(`Generated Name: ${suggested}`);
+  }
+
+  function copyFromPrimary() {
+    const primary = product?.variants[0];
+    if (!primary) return;
+    setDraft((current) => ({
+      ...current,
+      purchasePrice: primary.purchasePrice,
+      wholesalePrice: primary.wholesalePrice,
+      retailPrice: primary.retailPrice,
+      minimumSellingPrice: primary.minimumSellingPrice,
+      networkType: primary.networkType || current.networkType,
+      simConfiguration: primary.simConfiguration || current.simConfiguration,
+      regionVariant: primary.regionVariant || current.regionVariant,
+    }));
+    toast.success("Copied commercial policy from default variant");
+  }
+
+  function openVariant(variant: Variant | "new") {
+    setEditing(variant);
+    if (variant === "new") {
+      const primary = product?.variants[0];
+      setDraft({
+        ...blankVariant(),
+        networkType: primary?.networkType || "5G",
+        simConfiguration: primary?.simConfiguration || "Dual SIM",
+        regionVariant: primary?.regionVariant || "Pakistan",
+        purchasePrice: primary?.purchasePrice || "0",
+        wholesalePrice: primary?.wholesalePrice || "0",
+        retailPrice: primary?.retailPrice || "0",
+        minimumSellingPrice: primary?.minimumSellingPrice || "0",
+      });
+    } else {
+      const barcodes = (product?.barcodes || [])
+        .filter((item) => item.variantId === variant.id)
+        .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+      setDraft({
+        sku: variant.sku,
+        name: variant.name,
+        color: variant.color || "",
+        ramGb: variant.ramGb?.toString() || "",
+        storageGb: variant.storageGb?.toString() || "",
+        networkType: variant.networkType || "",
+        simConfiguration: variant.simConfiguration || "",
+        regionVariant: variant.regionVariant || "",
+        purchasePrice: variant.purchasePrice,
+        wholesalePrice: variant.wholesalePrice,
+        retailPrice: variant.retailPrice,
+        minimumSellingPrice: variant.minimumSellingPrice,
+        isActive: variant.isActive,
+        barcodeText: barcodes.map((item) => item.barcode).join("\n"),
+      });
+    }
+  }
+
+  function patch(key: keyof VariantDraft, value: string | boolean) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function refresh() {
+    if (!product) return;
+    const response = await fetch(`/api/products/${product.id}`);
+    if (response.ok) {
+      const body = await response.json();
+      setProduct(body.data);
+    }
+    await onChanged();
+  }
+
+  async function saveVariant(event: React.FormEvent) {
+    event.preventDefault();
+    if (!product || !editing) return;
+    const barcodes = draft.barcodeText
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((barcode, index) => ({
+        barcode,
+        type: barcode.length === 13 ? "EAN13" : "CODE128",
+        isPrimary: index === 0,
+      }));
+    const { barcodeText: _barcodeText, ...fields } = draft;
+    void _barcodeText;
+    const payload = {
+      ...fields,
+      ramGb: draft.ramGb ? Number(draft.ramGb) : null,
+      storageGb: draft.storageGb ? Number(draft.storageGb) : null,
+      barcodes,
+    };
+    setSaving(true);
+    const response = await fetch(
+      editing === "new" ? `/api/products/${product.id}/variants` : `/api/products/${product.id}/variants/${editing.id}`,
+      {
+        method: editing === "new" ? "POST" : "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    setSaving(false);
+    if (!response.ok) return toast.error(await responseError(response));
+    toast.success(editing === "new" ? "Variant created successfully" : "Variant updated successfully");
+    setEditing(null);
+    await refresh();
+  }
+
+  return (
+    <>
+      <Modal
+        open={Boolean(initial)}
+        onClose={onClose}
+        title={product ? `${product.sku} · ${product.name}` : "Product variants"}
+        description="Maintain every sellable configuration, storage, color, and scanner barcodes."
+        size="xl"
+      >
+        {product ? (
+          <div className="space-y-4 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-700">
+                  {product.variants.length} Sellable {product.variants.length === 1 ? "Configuration" : "Configurations"}
+                </p>
+                <p className="text-[11px] text-slate-400">Add colors, RAM/storage combinations, or regional models</p>
+              </div>
+              <Button onClick={() => openVariant("new")} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Add new variation
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full min-w-[860px] text-left text-xs">
+                <thead className="bg-slate-50 text-[9px] uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">Variant</th>
+                    <th className="px-4 py-3">Configuration</th>
+                    <th className="px-4 py-3">Barcodes</th>
+                    {canViewCost ? <th className="px-4 py-3 text-right">Cost</th> : null}
+                    <th className="px-4 py-3 text-right">Retail / Minimum</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {product.variants.map((variant) => {
+                    const barcodes = product.barcodes.filter((item) => item.variantId === variant.id);
+                    return (
+                      <tr key={variant.id} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-900">{variant.name}</p>
+                          <small className="block font-mono text-[10px] text-slate-400">{variant.sku}</small>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {[
+                            variant.color,
+                            variant.ramGb ? `${variant.ramGb} GB RAM` : null,
+                            variant.storageGb ? `${variant.storageGb} GB` : null,
+                            variant.networkType,
+                            variant.simConfiguration,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[10px] text-slate-500">
+                          {barcodes.map((item) => item.barcode).join(" · ") || "—"}
+                        </td>
+                        {canViewCost ? (
+                          <td className="px-4 py-3 text-right font-mono text-slate-600">
+                            {formatMoney(variant.purchasePrice, currency)}
+                          </td>
+                        ) : null}
+                        <td className="px-4 py-3 text-right">
+                          <p className="font-mono font-bold text-slate-900">{formatMoney(variant.retailPrice, currency)}</p>
+                          <small className="block text-[10px] text-slate-400">
+                            Min {formatMoney(variant.minimumSellingPrice, currency)}
+                          </small>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge tone={variant.isActive ? "green" : "slate"}>
+                            {variant.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button size="sm" variant="outline" onClick={() => openVariant(variant)}>
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title={editing === "new" ? "Add product variation" : "Edit product variation"}
+        description="SKU and barcode must remain unique company-wide across all catalog items."
+        size="lg"
+      >
+        <form onSubmit={saveVariant} className="space-y-4 p-5">
+          {editing === "new" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-blue-50/80 p-3 text-xs text-blue-900">
+              <span>Creating a new variation for <b>{product?.name}</b></span>
+              <button
+                type="button"
+                onClick={copyFromPrimary}
+                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100"
+              >
+                Copy prices from base variant
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Variant SKU" required>
+              <div className="flex gap-1.5">
+                <input
+                  className="input font-mono uppercase flex-1"
+                  value={draft.sku}
+                  onChange={(event) => patch("sku", event.target.value.toUpperCase())}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={autoGenSku}
+                  className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                  title="Auto-generate variant SKU"
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </Field>
+
+            <Field label="Variant name" required wide>
+              <div className="flex gap-1.5">
+                <input
+                  className="input flex-1"
+                  placeholder="e.g. iPhone 15 Pro Max 256GB Black Titanium"
+                  value={draft.name}
+                  onChange={(event) => patch("name", event.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={suggestName}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  title="Suggest name from specs"
+                >
+                  Auto-Fill
+                </button>
+              </div>
+            </Field>
+
+            <Field label="Color">
+              <input
+                className="input"
+                placeholder="e.g. Natural Titanium, Black, Blue"
+                value={draft.color}
+                onChange={(event) => patch("color", event.target.value)}
+              />
+            </Field>
+
+            <Field label="RAM (GB)">
+              <input
+                type="number"
+                min="0"
+                className="input font-mono"
+                placeholder="e.g. 8"
+                value={draft.ramGb}
+                onChange={(event) => patch("ramGb", event.target.value)}
+              />
+            </Field>
+
+            <Field label="Storage (GB)">
+              <input
+                type="number"
+                min="0"
+                className="input font-mono"
+                placeholder="e.g. 256 or 512"
+                value={draft.storageGb}
+                onChange={(event) => patch("storageGb", event.target.value)}
+              />
+            </Field>
+
+            <Field label="Network">
+              <input
+                className="input"
+                placeholder="e.g. 5G, 4G LTE"
+                value={draft.networkType}
+                onChange={(event) => patch("networkType", event.target.value)}
+              />
+            </Field>
+
+            <Field label="SIM configuration">
+              <input
+                className="input"
+                placeholder="e.g. Physical Dual SIM, eSIM"
+                value={draft.simConfiguration}
+                onChange={(event) => patch("simConfiguration", event.target.value)}
+              />
+            </Field>
+
+            <Field label="Region / Approval">
+              <input
+                className="input"
+                placeholder="e.g. PTA Approved, Global"
+                value={draft.regionVariant}
+                onChange={(event) => patch("regionVariant", event.target.value)}
+              />
+            </Field>
+
+            <Field label="Purchase cost">
+              <MoneyInput
+                value={draft.purchasePrice}
+                onChange={(value) => patch("purchasePrice", value)}
+                disabled={!canViewCost}
+              />
+            </Field>
+
+            <Field label="Wholesale price">
+              <MoneyInput
+                value={draft.wholesalePrice}
+                onChange={(value) => patch("wholesalePrice", value)}
+              />
+            </Field>
+
+            <Field label="Retail price">
+              <MoneyInput
+                value={draft.retailPrice}
+                onChange={(value) => patch("retailPrice", value)}
+              />
+            </Field>
+
+            <Field label="Minimum selling price">
+              <MoneyInput
+                value={draft.minimumSellingPrice}
+                onChange={(value) => patch("minimumSellingPrice", value)}
+              />
+            </Field>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-800">
+                Barcodes (EAN / UPC / Custom) — one per line
+              </label>
+              <button
+                type="button"
+                onClick={autoGenBarcode}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800"
+              >
+                <Barcode className="h-3.5 w-3.5" />
+                Auto-Gen Barcode
+              </button>
+            </div>
+            <textarea
+              className="mt-1.5 min-h-20 w-full rounded-lg border border-slate-200 p-3 font-mono text-xs focus:border-blue-500 focus:outline-none"
+              placeholder="e.g. 8901234567890"
+              value={draft.barcodeText}
+              onChange={(event) => patch("barcodeText", event.target.value)}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-xs font-semibold text-slate-800">
+            <input
+              type="checkbox"
+              checked={draft.isActive}
+              onChange={(event) => patch("isActive", event.target.checked)}
+              className="rounded"
+            />
+            Active and available for purchase, inventory, and sales
+          </label>
+
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              {editing === "new" ? "Create variant" : "Save variant"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
+  );
 }
 
 function Field({ label, required, children, wide }: { label: string; required?: boolean; children: React.ReactNode; wide?: boolean }) {

@@ -10,7 +10,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     assertSameOrigin(request); const context = await requirePermission("catalog.product.edit"); const productId = idSchema.parse((await params).id); const input = productVariantSchema.parse(await request.json());
-    if (!context.permissions.includes("catalog.price.change")) throw new ApiError(403, "PRICE_CHANGE_FORBIDDEN", "Price-change permission is required to create a sellable variant.");
+    const canChangePrice = context.permissions.includes("catalog.price.change") || context.permissions.includes("catalog.product.create") || context.permissions.includes("catalog.product.edit");
+    if (!canChangePrice) throw new ApiError(403, "PRICE_CHANGE_FORBIDDEN", "Catalog management permission is required to create a sellable variant.");
     if (Number(input.purchasePrice) > 0 && !context.permissions.includes("catalog.cost.view")) throw new ApiError(403, "COST_ACCESS_REQUIRED", "Cost access is required to set a variant purchase price.");
     const product = await prisma.product.findFirst({ where: { id: productId, companyId: context.company.id, status: "ACTIVE" }, select: { id: true, sku: true } }); if (!product) throw new ApiError(404, "PRODUCT_NOT_FOUND", "Active product was not found.");
     const row = await prisma.$transaction(async (tx) => {

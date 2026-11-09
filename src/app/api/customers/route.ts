@@ -6,5 +6,109 @@ import { customerDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 
-export async function GET(request: Request) { try { const context = await requirePermission("customer.manage"); const { page, pageSize, skip, params } = parsePagination(request.url); const branches = permittedBranchIds(context, "customer.manage"); const search = params.get("search")?.trim(); const where = { companyId: context.company.id, AND: [...(branches ? [{ OR: [{ branchId: null }, { branchId: { in: branches } }] }] : []), ...(search ? [{ OR: [{ code: { contains: search, mode: "insensitive" as const } }, { name: { contains: search, mode: "insensitive" as const } }, { phone: { contains: search, mode: "insensitive" as const } }] }] : [])] }; const [items,total]=await Promise.all([prisma.customer.findMany({where,include:{branch:{select:{code:true,name:true}}},orderBy:{name:"asc"},skip,take:pageSize}),prisma.customer.count({where})]); return NextResponse.json(jsonSafe({data:items,pagination:{page,pageSize,total}})); } catch(error){return apiError(error);} }
-export async function POST(request: Request) { try { assertSameOrigin(request); const body=customerDraftSchema.parse(await request.json()); const context=await requirePermission("customer.manage",{branchId:body.branchId}); const customer=await prisma.$transaction(async tx=>{if(body.priceListId){const priceList=await tx.priceList.findFirst({where:{id:body.priceListId,companyId:context.company.id,isActive:true},select:{id:true}});if(!priceList)throw new ApiError(422,"INVALID_PRICE_LIST","Select an active price list in this company.");}const created=await tx.customer.create({data:{companyId:context.company.id,branchId:body.branchId||null,code:body.code,name:body.name,customerType:body.customerType,phone:body.phone||null,email:body.email||null,address:body.address||null,taxNumber:body.taxNumber||null,creditLimit:body.creditLimit,paymentTermsDays:body.paymentTermsDays,priceListId:body.priceListId||null}}); await appendAudit({companyId:context.company.id,actorId:context.user.id,branchId:body.branchId,action:"CUSTOMER_CREATED",module:"customer",entityType:"Customer",entityId:created.id,entityReference:created.code,newValues:{name:created.name,status:created.status}},tx); return created;}); return NextResponse.json(jsonSafe({data:customer}),{status:201}); } catch(error){return apiError(error);} }
+export async function GET(request: Request) {
+  try {
+    const context = await requirePermission("customer.manage");
+    const { page, pageSize, skip, params } = parsePagination(request.url);
+    const branches = permittedBranchIds(context, "customer.manage");
+    const search = params.get("search")?.trim();
+
+    const where = {
+      companyId: context.company.id,
+      AND: [
+        ...(branches ? [{ OR: [{ branchId: null }, { branchId: { in: branches } }] }] : []),
+        ...(search
+          ? [
+              {
+                OR: [
+                  { code: { contains: search, mode: "insensitive" as const } },
+                  { name: { contains: search, mode: "insensitive" as const } },
+                  { phone: { contains: search, mode: "insensitive" as const } },
+                  { taxNumber: { contains: search, mode: "insensitive" as const } },
+                ],
+              },
+            ]
+          : []),
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+          priceList: { select: { id: true, code: true, name: true, priceLevel: true } },
+        },
+        orderBy: [{ status: "asc" }, { name: "asc" }],
+        skip,
+        take: pageSize,
+      }),
+      prisma.customer.count({ where }),
+    ]);
+
+    return NextResponse.json(jsonSafe({ data: items, pagination: { page, pageSize, total } }));
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const body = customerDraftSchema.parse(await request.json());
+    const context = await requirePermission("customer.manage", { branchId: body.branchId });
+
+    const customer = await prisma.$transaction(async (tx) => {
+      if (body.priceListId) {
+        const priceList = await tx.priceList.findFirst({
+          where: { id: body.priceListId, companyId: context.company.id, isActive: true },
+          select: { id: true },
+        });
+        if (!priceList) throw new ApiError(422, "INVALID_PRICE_LIST", "Select an active price list in this company.");
+      }
+
+      const created = await tx.customer.create({
+        data: {
+          companyId: context.company.id,
+          branchId: body.branchId || null,
+          code: body.code,
+          name: body.name,
+          customerType: body.customerType,
+          phone: body.phone || null,
+          email: body.email || null,
+          address: body.address || null,
+          taxNumber: body.taxNumber || null,
+          creditLimit: body.creditLimit,
+          paymentTermsDays: body.paymentTermsDays,
+          priceListId: body.priceListId || null,
+          status: body.status || "ACTIVE",
+        },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+          priceList: { select: { id: true, code: true, name: true } },
+        },
+      });
+
+      await appendAudit(
+        {
+          companyId: context.company.id,
+          actorId: context.user.id,
+          branchId: body.branchId,
+          action: "CUSTOMER_CREATED",
+          module: "customer",
+          entityType: "Customer",
+          entityId: created.id,
+          entityReference: created.code,
+          newValues: { name: created.name, status: created.status, customerType: created.customerType },
+        },
+        tx,
+      );
+
+      return created;
+    });
+
+    return NextResponse.json(jsonSafe({ data: customer }), { status: 201 });
+  } catch (error) {
+    return apiError(error);
+  }
+}

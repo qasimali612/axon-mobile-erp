@@ -43,6 +43,35 @@ const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi",
 const money = (value: number, currency: string) => new Intl.NumberFormat("en-PK", { style: "currency", currency, maximumFractionDigits: 2 }).format(value || 0);
 const num = (value: string) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
+function playScanBeep(success = true) {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (success) {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1760, ctx.currentTime);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.1);
+    } else {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.22);
+    }
+  } catch {
+    // Non-fatal if browser audio is silenced
+  }
+}
+
 export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   const router = useRouter();
   const [lookups, setLookups] = useState<Lookup | null>(null);
@@ -219,16 +248,46 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
     }
   }, [cart, resolvePrice]);
 
-  async function scan(code = scanCode) {
-    if (!code.trim() || !warehouseId) return;
-    setBusy(true); setNotice(null);
+  const isScanningRef = useRef(false);
+
+  async function scan(overrideCode?: string) {
+    const code = (overrideCode ?? scanCode).trim();
+    if (!code || !warehouseId) return;
+    if (isScanningRef.current) return;
+    isScanningRef.current = true;
+
+    // Instantly clear scanner input row so it's clean and ready for new scanning immediately
+    setScanCode("");
+    setBusy(true);
+    setNotice(null);
+
     try {
-      const response = await fetch(`/api/operations/catalog/resolve?mode=sale&warehouseId=${warehouseId}&code=${encodeURIComponent(code.trim())}`);
-      const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || "Item was not found.");
-      await addResolved(payload.data); setScanCode(""); setNotice({ kind: "success", text: `${payload.data.product.name} (${payload.data.variant.name}) added by ${payload.data.resolutionType.toLowerCase().replaceAll("_", " ")}.` });
+      const response = await fetch(
+        `/api/operations/catalog/resolve?mode=sale&warehouseId=${warehouseId}&code=${encodeURIComponent(code)}`,
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error?.message || "Item was not found or unavailable in this warehouse.");
+      }
+
+      await addResolved(payload.data);
+      playScanBeep(true);
+      setNotice({
+        kind: "success",
+        text: `⚡ ${payload.data.product.name} (${payload.data.variant.name}) auto-added to cart! Ready for next scan.`,
+      });
+    } catch (error) {
+      playScanBeep(false);
+      setNotice({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Scan failed.",
+      });
+    } finally {
+      setBusy(false);
+      isScanningRef.current = false;
+      // Refocus the scanner input immediately so continuous gun scanning doesn't miss a beat
       requestAnimationFrame(() => scanRef.current?.focus());
-    } catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "Scan failed." }); }
-    finally { setBusy(false); }
+    }
   }
 
   async function searchCatalog(query = searchQuery) {
@@ -472,9 +531,22 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
               disabled={Boolean(invoice)}
               className="h-16 flex-1 bg-transparent px-2 font-mono text-base font-bold text-white outline-none placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:text-slate-500 sm:text-lg"
               value={scanCode}
-              onChange={(event) => setScanCode(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") void scan(); }}
-              placeholder="Point barcode gun or enter IMEI, Serial, Barcode, or SKU and press Enter…"
+              onChange={(event) => {
+                const val = event.target.value;
+                setScanCode(val);
+                const trimmed = val.trim();
+                // Auto-trigger scan if hardware scanner inputs a full 15-digit IMEI or 13-digit EAN
+                if (/^\d{15}$/.test(trimmed) || /^\d{13}$/.test(trimmed)) {
+                  void scan(trimmed);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === "Tab") {
+                  event.preventDefault();
+                  void scan();
+                }
+              }}
+              placeholder="Point barcode scanner gun (IMEI / Barcode / SKU) — auto-adds & clears row for continuous scanning…"
             />
             {scanCode && (
               <button onClick={() => setScanCode("")} className="px-3 text-slate-400 hover:text-white">
