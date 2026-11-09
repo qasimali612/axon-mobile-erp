@@ -65,4 +65,60 @@ function AdjustmentEditor({ open, onClose, activeWarehouseId, onCreated }: { ope
     <div className="space-y-3">{!lines.length ? <div className="rounded-xl border border-dashed p-10 text-center text-xs text-slate-400">Add quantity, IMEI or serial items. Gains and losses may be mixed in one document.</div> : lines.map((line, index) => <div key={line.key} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><b className="text-sm">{index + 1}. {line.label}</b><Badge tone={line.direction === "IN" ? "green" : "red"}>{line.direction === "IN" ? "Gain" : "Loss"}</Badge></div><span className="text-[10px] text-slate-400">{line.sku} · {line.trackingMethod}</span></div><button type="button" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))} className="p-2 text-slate-400 hover:text-rose-600"><Trash2 className="h-4 w-4"/></button></div>{serialized(line.trackingMethod) ? line.direction === "IN" ? <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px]"><label className="text-xs font-semibold">One physical unit per line<textarea className="mt-1.5 min-h-24 w-full rounded-lg border p-3 font-mono text-xs" value={line.unitText} onChange={(event) => patch(line.key, { unitText: event.target.value })} placeholder={line.trackingMethod === "IMEI" ? "IMEI 1, IMEI 2 (dual-SIM)\nIMEI 1" : "SERIAL-001\nSERIAL-002"}/></label><label className="text-xs font-semibold">Acquisition cost / unit<input className={`${field} mt-1.5 text-right`} inputMode="decimal" value={line.unitCost} onChange={(event) => patch(line.key, { unitCost: event.target.value })}/><span className="mt-2 block text-[10px] text-slate-400">Each line is one stock unit. Two comma-separated IMEIs remain one dual-SIM unit.</span></label></div> : <SerializedLossPicker line={line} units={availableUnits(line)} onScan={(value) => scanUnit(line, value)} onRemove={(id) => patch(line.key, { stockUnitIds: line.stockUnitIds.filter((item) => item !== id) })}/> : <div className="mt-3 grid gap-3 md:grid-cols-3"><label className="text-xs font-semibold">Quantity<input className={`${field} mt-1.5 text-right`} inputMode="decimal" value={line.quantity} onChange={(event) => patch(line.key, { quantity: event.target.value })}/></label><label className="text-xs font-semibold">Unit cost{line.direction === "OUT" ? " (server recalculates)" : ""}<input className={`${field} mt-1.5 text-right`} inputMode="decimal" value={line.unitCost} onChange={(event) => patch(line.key, { unitCost: event.target.value })}/></label><div className="mt-6 rounded-lg bg-slate-50 p-3 text-[10px] text-slate-500">Negative availability and valuation are rechecked transactionally at posting.</div></div>}</div>)}</div>
     <div className="grid gap-3 md:grid-cols-2"><label className="text-xs font-semibold">Reason<input className={`${field} mt-1.5`} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} placeholder="Explain the business reason" required/></label><label className="text-xs font-semibold">Notes<input className={`${field} mt-1.5`} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000}/></label></div><div className="flex items-center justify-between border-t pt-4"><p className="flex items-center gap-2 text-[10px] text-amber-700"><AlertTriangle className="h-4 w-4"/>Saving creates a draft only.</p><div className="flex gap-2"><Button type="button" variant="ghost" onClick={onClose}>Close</Button><Button type="submit" loading={saving} className="bg-blue-600 hover:bg-blue-700">Create draft</Button></div></div></form></Modal>;
 }
-function SerializedLossPicker({ line, units, onScan, onRemove }: { line: DraftLine; units: Row[]; onScan: (value: string) => void; onRemove: (id: string) => void }) { const ref = useRef<HTMLInputElement>(null); const [scan, setScan] = useState(""); return <div className="mt-3"><form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); if (!scan.trim()) return; onScan(scan); setScan(""); ref.current?.focus(); }}><label className="relative flex-1"><Barcode className="absolute left-3 top-3 h-4 w-4 text-blue-500"/><input ref={ref} className={`${field} pl-9 font-mono`} value={scan} onChange={(event) => setScan(event.target.value)} placeholder="Scan or enter exact IMEI / serial, then press Enter"/></label><Button type="submit" variant="outline">Select</Button></form><div className="mt-2 flex flex-wrap gap-1.5">{line.stockUnitIds.map((id) => { const unit = units.find((item) => item.id === id); return <button type="button" key={id} onClick={() => onRemove(id)} className="rounded-lg bg-blue-50 px-2 py-1.5 font-mono text-[10px] text-blue-700 hover:bg-rose-50 hover:text-rose-700">{unit ? ids(unit) : id} ×</button>; })}{!line.stockUnitIds.length ? <span className="text-[10px] text-slate-400">No physical units selected.</span> : null}</div></div>; }
+function SerializedLossPicker({ line, units, onScan, onRemove }: { line: DraftLine; units: Row[]; onScan: (value: string) => void; onRemove: (id: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [scan, setScan] = useState("");
+  return (
+    <div className="mt-3">
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!scan.trim()) return;
+          onScan(scan.trim());
+          setScan("");
+          ref.current?.focus();
+        }}
+      >
+        <label className="relative flex-1">
+          <Barcode className="absolute left-3 top-3 h-4 w-4 text-blue-500" />
+          <input
+            ref={ref}
+            className={`${field} pl-9 font-mono`}
+            value={scan}
+            onChange={(event) => {
+              const val = event.target.value;
+              setScan(val);
+              const trimmed = val.trim();
+              if (/^\d{15}$/.test(trimmed)) {
+                onScan(trimmed);
+                setScan("");
+                ref.current?.focus();
+              }
+            }}
+            placeholder="Scan or enter exact IMEI / serial (auto-selects on scan or Enter)"
+          />
+        </label>
+        <Button type="submit" variant="outline">
+          Select
+        </Button>
+      </form>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {line.stockUnitIds.map((id) => {
+          const unit = units.find((item) => item.id === id);
+          return (
+            <button
+              type="button"
+              key={id}
+              onClick={() => onRemove(id)}
+              className="rounded-lg bg-blue-50 px-2 py-1.5 font-mono text-[10px] text-blue-700 hover:bg-rose-50 hover:text-rose-700"
+            >
+              {unit ? ids(unit) : id} &times;
+            </button>
+          );
+        })}
+        {!line.stockUnitIds.length ? <span className="text-[10px] text-slate-400">No physical units selected.</span> : null}
+      </div>
+    </div>
+  );
+}

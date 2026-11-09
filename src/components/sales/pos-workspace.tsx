@@ -90,6 +90,8 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   const [sourceIdempotencyKey, setSourceIdempotencyKey] = useState("");
   const [tendered, setTendered] = useState("");
   const [scanCode, setScanCode] = useState("");
+  const [autoAdd, setAutoAdd] = useState(true);
+  const autoScanTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -251,6 +253,10 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   const isScanningRef = useRef(false);
 
   async function scan(overrideCode?: string) {
+    if (autoScanTimerRef.current) {
+      clearTimeout(autoScanTimerRef.current);
+      autoScanTimerRef.current = null;
+    }
     const code = (overrideCode ?? scanCode).trim();
     if (!code || !warehouseId) return;
     if (isScanningRef.current) return;
@@ -365,6 +371,7 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "F2") { event.preventDefault(); setSearchOpen(true); requestAnimationFrame(() => { searchRef.current?.focus(); void searchCatalog(""); }); }
+      if (event.key === "F3") { event.preventDefault(); scanRef.current?.focus(); }
       if (event.key === "F4") { event.preventDefault(); customerRef.current?.focus(); }
       if (event.key === "F8") {
         event.preventDefault();
@@ -517,8 +524,22 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
                 (Dual-SIM IMEI 1 / IMEI 2 / Serial / Barcode / SKU)
               </span>
             </div>
-            <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
-              <span>Autofocus: On</span>
+            <div className="flex items-center gap-2.5 font-mono text-[11px]">
+              <button
+                type="button"
+                onClick={() => setAutoAdd((prev) => !prev)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${
+                  autoAdd
+                    ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/50"
+                    : "bg-slate-800 text-slate-400 hover:text-slate-300 ring-1 ring-slate-700"
+                }`}
+                title="Toggle Auto-Add Mode: When ON, scanned barcodes are instantly added to the cart without pressing ADD"
+              >
+                <Zap className={`h-3 w-3 ${autoAdd ? "text-emerald-400 fill-emerald-400" : "text-slate-500"}`} />
+                AUTO-ADD: {autoAdd ? "ENABLED" : "OFF"}
+              </button>
+              <span className="text-slate-600">|</span>
+              <span className="text-slate-400">Autofocus: On (F3)</span>
             </div>
           </div>
           <div className="flex items-center bg-slate-950">
@@ -535,28 +556,79 @@ export function PosWorkspace({ currency, userId, invoiceId }: Props) {
                 const val = event.target.value;
                 setScanCode(val);
                 const trimmed = val.trim();
-                // Auto-trigger scan if hardware scanner inputs a full 15-digit IMEI or 13-digit EAN
-                if (/^\d{15}$/.test(trimmed) || /^\d{13}$/.test(trimmed)) {
+                if (!trimmed || !autoAdd) return;
+
+                // 1. Instant trigger on standard barcode lengths:
+                // - 15 digits: IMEI (Dual-SIM IMEI1 or IMEI2)
+                // - 14 digits: GTIN-14
+                // - 13 digits: EAN-13
+                // - 12 digits: UPC-A
+                // - 8 digits: EAN-8
+                if (
+                  /^\d{15}$/.test(trimmed) ||
+                  /^\d{14}$/.test(trimmed) ||
+                  /^\d{13}$/.test(trimmed) ||
+                  /^\d{12}$/.test(trimmed) ||
+                  /^\d{8}$/.test(trimmed)
+                ) {
+                  if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
                   void scan(trimmed);
+                  return;
+                }
+
+                // 2. Fast auto-trigger for ANY other barcode (SKU, Serial, Alphanumeric barcode)
+                // Hardware barcode scanners type very rapidly (<30ms/char). When the burst finishes, auto-add!
+                if (trimmed.length >= 3) {
+                  if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
+                  autoScanTimerRef.current = setTimeout(() => {
+                    void scan(trimmed);
+                  }, 140);
+                }
+              }}
+              onPaste={(event) => {
+                if (!autoAdd) return;
+                const pastedText = event.clipboardData.getData("text").trim();
+                if (pastedText) {
+                  event.preventDefault();
+                  if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
+                  setScanCode("");
+                  void scan(pastedText);
                 }
               }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === "Tab") {
                   event.preventDefault();
+                  if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
                   void scan();
                 }
               }}
-              placeholder="Point barcode scanner gun (IMEI / Barcode / SKU) — auto-adds & clears row for continuous scanning…"
+              placeholder={
+                autoAdd
+                  ? "Scan barcode, IMEI, or SKU — auto-adds to cart and clears row for next scan..."
+                  : "Type barcode / IMEI / SKU and click ADD..."
+              }
             />
             {scanCode && (
-              <button onClick={() => setScanCode("")} className="px-3 text-slate-400 hover:text-white">
+              <button
+                type="button"
+                onClick={() => {
+                  if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
+                  setScanCode("");
+                }}
+                className="px-3 text-slate-400 hover:text-white"
+                title="Clear barcode input"
+              >
                 <X className="h-5 w-5"/>
               </button>
             )}
             <button
               disabled={busy || Boolean(invoice)}
-              onClick={() => void scan()}
+              onClick={() => {
+                if (autoScanTimerRef.current) clearTimeout(autoScanTimerRef.current);
+                void scan();
+              }}
               className="h-16 border-l border-slate-800 bg-blue-600 px-6 text-sm font-black text-white transition hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50"
+              title="Click or press Enter to add item"
             >
               {busy ? <Loader2 className="h-5 w-5 animate-spin"/> : "ADD"}
             </button>
