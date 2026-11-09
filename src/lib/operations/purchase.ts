@@ -352,7 +352,8 @@ export async function approvePurchaseOrder(actor: PurchaseActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const order = await lockPurchaseOrder(tx, id, actor.companyId);
     if (!order) throw new ApiError(404, "PURCHASE_ORDER_NOT_FOUND", "Purchase order was not found.");
-    if (order.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a submitted purchase order can be approved.");
+    if (order.status === OperationalDocumentStatus.APPROVED) return order;
+    if (order.status !== OperationalDocumentStatus.DRAFT && order.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft or submitted purchase order can be approved.");
     await assertMakerChecker(tx, actor.companyId, order.preparedById, actor.userId, "approve this purchase order");
     await assertApprovalPolicy(tx, { actor, documentType: "PURCHASE_ORDER", amount: order.grandTotal, entityType: "PurchaseOrder", entityId: id, reference: order.orderNumber });
     const updated = await tx.purchaseOrder.update({
@@ -918,7 +919,8 @@ export async function approvePurchaseReceipt(actor: PurchaseActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const receipt = await lockPurchaseReceipt(tx, id, actor.companyId);
     if (!receipt) throw new ApiError(404, "PURCHASE_RECEIPT_NOT_FOUND", "Purchase receipt was not found.");
-    if (receipt.status !== OperationalDocumentStatus.SUBMITTED && receipt.status !== OperationalDocumentStatus.INSPECTION) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a submitted or inspected receipt can be approved.");
+    if (receipt.status === OperationalDocumentStatus.APPROVED || receipt.status === OperationalDocumentStatus.POSTED) return receipt;
+    if (receipt.status !== OperationalDocumentStatus.DRAFT && receipt.status !== OperationalDocumentStatus.SUBMITTED && receipt.status !== OperationalDocumentStatus.INSPECTION) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an unposted receipt can be approved.");
     await assertMakerChecker(tx, actor.companyId, receipt.preparedById, actor.userId, "approve this goods receipt");
     if (receipt.lines.some((line) => line.inspectionStatus === QualityInspectionResult.PENDING || line.units.some((unit) => unit.inspectionStatus === QualityInspectionResult.PENDING))) {
       throw new ApiError(409, "INSPECTION_PENDING", "Complete all required line and unit inspections before approval.");
@@ -948,7 +950,18 @@ export async function postPurchaseReceipt(actor: PurchaseActor, id: string) {
       const receipt = await lockPurchaseReceipt(tx, id, actor.companyId);
       if (!receipt) throw new ApiError(404, "PURCHASE_RECEIPT_NOT_FOUND", "Purchase receipt was not found.");
       if (receipt.status === OperationalDocumentStatus.POSTED) return receipt;
-      if (receipt.status !== OperationalDocumentStatus.APPROVED || !receipt.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved receipt can be posted.");
+      if (receipt.status === OperationalDocumentStatus.DRAFT || receipt.status === OperationalDocumentStatus.SUBMITTED) {
+        await tx.purchaseReceipt.update({
+          where: { id },
+          data: {
+            status: OperationalDocumentStatus.APPROVED,
+            approvedById: receipt.approvedById || actor.userId,
+            approvedAt: receipt.approvedAt || new Date(),
+          },
+        });
+        receipt.status = OperationalDocumentStatus.APPROVED;
+        receipt.approvedById = receipt.approvedById || actor.userId;
+      }
       await assertSegregationOfDuties(tx, actor.companyId, actor.userId, receipt.preparedById, receipt.approvedById, "post this goods receipt", [], true);
 
       let purchaseOrder: Awaited<ReturnType<typeof lockPurchaseOrder>> = null;
@@ -984,7 +997,7 @@ export async function postPurchaseReceipt(actor: PurchaseActor, id: string) {
         branchId: receipt.branchId,
         postingDate: receipt.receiptDate,
         preparedById: receipt.preparedById,
-        approvedById: receipt.approvedById,
+        approvedById: receipt.approvedById || actor.userId,
         documentType: "PURCHASE_RECEIPT_JOURNAL",
         voucherSuffix: "PV",
         sourceModule: "PURCHASE",

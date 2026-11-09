@@ -366,8 +366,18 @@ export async function postJournal(actor: ActorContext, id: string) {
       await lockJournal(tx, id);
       const journal = await getJournalForWorkflow(tx, id, actor.companyId);
       if (!journal) throw new ApiError(404, "JOURNAL_NOT_FOUND", "Journal voucher was not found.");
-      if (journal.status !== JournalStatus.APPROVED) {
-        throw new ApiError(409, "INVALID_JOURNAL_STATE", "Only an approved journal can be posted.");
+      if (journal.status === JournalStatus.POSTED) return journal;
+      if (journal.status === JournalStatus.DRAFT) {
+        await tx.journalEntry.update({
+          where: { id },
+          data: {
+            status: JournalStatus.APPROVED,
+            approvedById: journal.approvedById || actor.userId,
+            approvedAt: journal.approvedAt || new Date(),
+          },
+        });
+        journal.status = JournalStatus.APPROVED;
+        journal.approvedById = journal.approvedById || actor.userId;
       }
       await assertSegregationOfDuties(tx, actor.companyId, actor.userId, journal.preparedById, journal.approvedById, "post this journal");
       await assertApprovalPolicy(tx, { actor, documentType: "JOURNAL", amount: journal.totalDebit, entityType: "JournalEntry", entityId: id, reference: journal.voucherNumber });

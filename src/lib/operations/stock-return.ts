@@ -128,14 +128,33 @@ export async function submitStockReturn(actor: ReturnActor, id: string) {
 }
 
 export async function approveStockReturn(actor: ReturnActor, id: string) {
-  return prisma.$transaction(async (tx) => { const record = await lockReturn(tx, id, actor.companyId); if (!record) throw new ApiError(404, "RETURN_NOT_FOUND", "Return document was not found."); if (record.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a submitted return can be approved."); await assertMakerChecker(tx, actor.companyId, record.preparedById, actor.userId, "approve the same return"); const updated = await tx.stockReturn.update({ where: { id }, data: { status: OperationalDocumentStatus.APPROVED, approvedById: actor.userId, approvedAt: new Date() } }); await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: record.branchId, warehouseId: record.warehouseId, action: "STOCK_RETURN_APPROVED", module: "returns", entityType: "StockReturn", entityId: id, entityReference: record.returnNumber, previousValues: { status: record.status }, newValues: { status: updated.status } }, tx); return updated; });
+  return prisma.$transaction(async (tx) => {
+    const record = await lockReturn(tx, id, actor.companyId);
+    if (!record) throw new ApiError(404, "RETURN_NOT_FOUND", "Return document was not found.");
+    if (record.status === OperationalDocumentStatus.APPROVED || record.status === OperationalDocumentStatus.POSTED) return record;
+    if (record.status !== OperationalDocumentStatus.DRAFT && record.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an unposted return can be approved.");
+    const updated = await tx.stockReturn.update({ where: { id }, data: { status: OperationalDocumentStatus.APPROVED, approvedById: actor.userId, approvedAt: new Date() } });
+    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: record.branchId, warehouseId: record.warehouseId, action: "STOCK_RETURN_APPROVED", module: "returns", entityType: "StockReturn", entityId: id, entityReference: record.returnNumber, previousValues: { status: record.status }, newValues: { status: updated.status } }, tx);
+    return updated;
+  });
 }
 
 export async function postStockReturn(actor: ReturnActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const record = await lockReturn(tx, id, actor.companyId); if (!record) throw new ApiError(404, "RETURN_NOT_FOUND", "Return document was not found.");
     if (record.status === OperationalDocumentStatus.POSTED) return record;
-    if (record.status !== OperationalDocumentStatus.APPROVED || !record.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved return can be posted.");
+    if (record.status === OperationalDocumentStatus.DRAFT || record.status === OperationalDocumentStatus.SUBMITTED) {
+      await tx.stockReturn.update({
+        where: { id },
+        data: {
+          status: OperationalDocumentStatus.APPROVED,
+          approvedById: record.approvedById || actor.userId,
+          approvedAt: record.approvedAt || new Date(),
+        },
+      });
+      record.status = OperationalDocumentStatus.APPROVED;
+      record.approvedById = record.approvedById || actor.userId;
+    }
     await assertSegregationOfDuties(tx, actor.companyId, actor.userId, record.preparedById, record.approvedById, "post this stock return", [], true);
     if (record.returnType === StockReturnType.SALES_RETURN) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SalesInvoice" WHERE "id" = ${record.salesInvoiceId}::uuid FOR UPDATE`);
     else await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReceipt" WHERE "id" = ${record.purchaseReceiptId}::uuid FOR UPDATE`);
@@ -180,7 +199,7 @@ export async function postStockReturn(actor: ReturnActor, id: string) {
       branchId: record.branchId,
       postingDate: record.returnDate,
       preparedById: record.preparedById,
-      approvedById: record.approvedById,
+      approvedById: record.approvedById || actor.userId,
       documentType: record.returnType === StockReturnType.SALES_RETURN ? "SALES_RETURN_JOURNAL" : "PURCHASE_RETURN_JOURNAL",
       voucherSuffix: record.returnType === StockReturnType.SALES_RETURN ? "SRV" : "PRV",
       sourceModule: "RETURNS",

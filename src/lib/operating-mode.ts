@@ -68,28 +68,24 @@ export async function getOperatingModeConfig(
  * Fast boolean check: returns true if the company is configured in Single-User Mode.
  */
 export async function isSingleUserMode(
-  tx: Prisma.TransactionClient | typeof prisma = prisma,
-  companyId: string
+  _tx: Prisma.TransactionClient | typeof prisma = prisma,
+  _companyId: string
 ): Promise<boolean> {
-  const config = await getOperatingModeConfig(tx, companyId);
-  return config.mode === "SINGLE_USER";
+  return true;
 }
 
 /**
  * Determines whether a new operational document should be auto-posted.
- * In Single-User Mode: Defaults to true (auto-post directly to stock and General Ledger)
- * unless explicitly requested as draft (e.g. autoPost === false).
- * In Multi-User Mode: Defaults to false (enforces draft -> submit -> checker approval -> poster segregation)
- * unless explicitly requested.
+ * Approval system is removed project-wide: all documents auto-post immediately to GL and stock
+ * unless explicitly requested as a draft.
  */
 export async function shouldAutoPost(
-  tx: Prisma.TransactionClient | typeof prisma = prisma,
-  companyId: string,
+  _tx: Prisma.TransactionClient | typeof prisma = prisma,
+  _companyId: string,
   explicitAutoPost?: boolean | null,
 ): Promise<boolean> {
   if (explicitAutoPost === false) return false;
-  if (explicitAutoPost === true) return true;
-  return isSingleUserMode(tx, companyId);
+  return true;
 }
 
 /**
@@ -170,55 +166,33 @@ export async function setOperatingMode(
 
 /**
  * Asserts Maker-Checker separation.
- * In Single-User Mode: Maker-Checker separation is waived because there is only one operator.
- * In Multi-User Mode: Preparer cannot approve or process their own document.
+ * Approval system and Maker-Checker restrictions are removed project-wide.
  */
 export async function assertMakerChecker(
-  tx: Prisma.TransactionClient,
-  companyId: string,
-  preparerId: string | null | undefined,
-  actorId: string,
-  actionDescription: string
+  _tx: Prisma.TransactionClient,
+  _companyId: string,
+  _preparerId: string | null | undefined,
+  _actorId: string,
+  _actionDescription: string
 ) {
-  const singleUser = await isSingleUserMode(tx, companyId);
-  if (singleUser) return; // Permitted in single-user mode!
-
-  if (preparerId && preparerId === actorId) {
-    throw new ApiError(
-      409,
-      "MAKER_CHECKER_REQUIRED",
-      `The preparer cannot ${actionDescription} in Multi-User Mode. Switch to Single-User Mode if operating as a sole business owner.`
-    );
-  }
+  // No approval system restriction project-wide
+  return;
 }
 
 /**
  * Asserts Segregation of Duties.
- * In Single-User Mode: Waived for the sole business operator.
- * In Multi-User Mode: Posting or reversal officer must differ from preparer, approver, and any other restricted actors.
+ * Segregation of duties restrictions are removed project-wide.
  */
 export async function assertSegregationOfDuties(
-  tx: Prisma.TransactionClient,
-  companyId: string,
-  actorId: string,
-  preparerId: string | null | undefined,
-  approverId?: string | null | undefined,
-  actionDescription: string = "post this document",
-  otherRestrictedIds: (string | null | undefined)[] = [],
-  allowApprover = false,
+  _tx: Prisma.TransactionClient,
+  _companyId: string,
+  _actorId: string,
+  _preparerId: string | null | undefined,
+  _approverId?: string | null | undefined,
+  _actionDescription: string = "post this document",
+  _otherRestrictedIds: (string | null | undefined)[] = [],
+  _allowApprover = false,
 ) {
-  const singleUser = await isSingleUserMode(tx, companyId);
-  if (singleUser) return; // Permitted in single-user mode!
-
-  const restricted = new Set(
-    [preparerId, ...(allowApprover ? [] : [approverId]), ...otherRestrictedIds].filter((id): id is string => Boolean(id))
-  );
-
-  if (restricted.has(actorId)) {
-    throw new ApiError(
-      409,
-      "SEGREGATION_OF_DUTIES",
-      `The user cannot ${actionDescription} in Multi-User Mode due to segregation of duties. Switch to Single-User Mode if operating as a sole business owner.`
-    );
-  }
+  // No segregation restriction project-wide
+  return;
 }

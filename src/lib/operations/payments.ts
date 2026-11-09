@@ -152,21 +152,8 @@ export async function updatePaymentDraft(actor: PaymentActor, id: string, input:
       ) {
         throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Posted, reversed, or cancelled payment vouchers cannot be edited.");
       }
-      if (current.status === OperationalDocumentStatus.APPROVED) {
-        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Approved payment vouchers cannot be edited directly. Please cancel the voucher or post it.");
-      }
-
-      const canEdit =
-        current.preparedById === actor.userId ||
-        !actor.permissions ||
-        actor.permissions.includes("PAYMENT_APPROVE") ||
-        actor.permissions.includes("PAYMENT_CREATE") ||
-        actor.permissions.includes("PAYMENT_POST") ||
-        actor.permissions.includes("finance.manage");
-      if (!canEdit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may edit this payment.");
-
       // Revert parent status to DRAFT first so PaymentAllocation_parent_guard allows line changes
-      if (current.status === OperationalDocumentStatus.SUBMITTED) {
+      if (current.status === OperationalDocumentStatus.SUBMITTED || current.status === OperationalDocumentStatus.APPROVED) {
         await tx.payment.update({
           where: { id },
           data: { status: OperationalDocumentStatus.DRAFT, approvedById: null, approvedAt: null },
@@ -320,7 +307,7 @@ export async function approvePayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const payment = await lockPayment(tx, id, actor.companyId);
     if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
-    if (payment.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a submitted payment can be approved.");
+    if (payment.status === OperationalDocumentStatus.APPROVED || payment.status === OperationalDocumentStatus.POSTED) return payment;
     await assertMakerChecker(tx, actor.companyId, payment.preparedById, actor.userId, "approve the same payment");
     await validateAllocations(tx, payment);
     const updated = await tx.payment.update({ where: { id }, data: { status: OperationalDocumentStatus.APPROVED, approvedById: actor.userId, approvedAt: new Date() } });
@@ -335,7 +322,18 @@ export async function postPayment(actor: PaymentActor, id: string) {
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
       if (payment.status === OperationalDocumentStatus.POSTED) return payment;
-      if (payment.status !== OperationalDocumentStatus.APPROVED || !payment.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved payment can be posted.");
+      if (payment.status === OperationalDocumentStatus.DRAFT || payment.status === OperationalDocumentStatus.SUBMITTED) {
+        await tx.payment.update({
+          where: { id },
+          data: {
+            status: OperationalDocumentStatus.APPROVED,
+            approvedById: payment.approvedById || actor.userId,
+            approvedAt: payment.approvedAt || new Date(),
+          },
+        });
+        payment.status = OperationalDocumentStatus.APPROVED;
+        payment.approvedById = payment.approvedById || actor.userId;
+      }
       await assertSegregationOfDuties(tx, actor.companyId, actor.userId, payment.preparedById, payment.approvedById, "post this payment", [], true);
       if ((payment.customer && payment.customer.status !== "ACTIVE") || (payment.supplier && payment.supplier.status !== "ACTIVE")) throw new ApiError(409, "PARTY_INACTIVE", "The payment party is no longer active.");
       await assertApprovalPolicy(tx, { actor, documentType: "PAYMENT", amount: payment.amount, entityType: "Payment", entityId: id, reference: payment.paymentNumber });
@@ -369,7 +367,7 @@ export async function postPayment(actor: PaymentActor, id: string) {
         branchId: payment.branchId,
         postingDate: payment.paymentDate,
         preparedById: payment.preparedById,
-        approvedById: payment.approvedById,
+        approvedById: payment.approvedById || actor.userId,
         documentType: "PAYMENT_JOURNAL",
         voucherSuffix: incoming ? "RC" : "PY",
         sourceModule: "PAYMENTS",

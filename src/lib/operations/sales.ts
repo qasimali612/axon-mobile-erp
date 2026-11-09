@@ -261,19 +261,17 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
       ) {
         throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Posted, reversed, or cancelled sales invoices cannot be edited.");
       }
-      if (current.status === OperationalDocumentStatus.APPROVED) {
-        throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Approved sales invoices cannot be edited directly. Please cancel or post the invoice.");
-      }
       const canEdit =
         current.preparedById === actor.userId ||
         !actor.permissions ||
         actor.permissions.includes("SALES_INVOICE_APPROVE") ||
         actor.permissions.includes("SALES_INVOICE_CREATE") ||
+        actor.permissions.includes("SALES_INVOICE_POST") ||
         actor.permissions.includes("sales.manage");
       if (!canEdit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may edit this sales invoice.");
 
       // Revert parent status to DRAFT first so modifying lines does not violate the database protect_operational_child trigger
-      if (current.status === OperationalDocumentStatus.SUBMITTED) {
+      if (current.status === OperationalDocumentStatus.SUBMITTED || current.status === OperationalDocumentStatus.APPROVED) {
         await tx.salesInvoice.update({
           where: { id },
           data: { status: OperationalDocumentStatus.DRAFT, approvedById: null, approvedAt: null },
@@ -410,7 +408,7 @@ export async function approveSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const invoice = await lockSalesInvoice(tx, id, actor.companyId);
     if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
-    if (invoice.status !== OperationalDocumentStatus.SUBMITTED) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a submitted invoice can be approved.");
+    if (invoice.status === OperationalDocumentStatus.APPROVED || invoice.status === OperationalDocumentStatus.POSTED) return invoice;
     await assertMakerChecker(tx, actor.companyId, invoice.preparedById, actor.userId, "approve this sales invoice");
     if (invoice.dueDate) {
       const receivable = await requirePostingAccount(tx, { companyId: actor.companyId, branchId: invoice.branchId, accountType: "ACCOUNTS_RECEIVABLE" });
@@ -451,7 +449,18 @@ export async function postSalesInvoice(actor: SalesActor, id: string) {
       const invoice = await lockSalesInvoice(tx, id, actor.companyId);
       if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
       if (invoice.status === OperationalDocumentStatus.POSTED) return invoice;
-      if (invoice.status !== OperationalDocumentStatus.APPROVED || !invoice.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved invoice can be posted.");
+      if (invoice.status === OperationalDocumentStatus.DRAFT || invoice.status === OperationalDocumentStatus.SUBMITTED) {
+        await tx.salesInvoice.update({
+          where: { id },
+          data: {
+            status: OperationalDocumentStatus.APPROVED,
+            approvedById: invoice.approvedById || actor.userId,
+            approvedAt: invoice.approvedAt || new Date(),
+          },
+        });
+        invoice.status = OperationalDocumentStatus.APPROVED;
+        invoice.approvedById = invoice.approvedById || actor.userId;
+      }
       await assertSegregationOfDuties(tx, actor.companyId, actor.userId, invoice.preparedById, invoice.approvedById, "post this sales invoice", [], true);
       if (invoice.customer.status !== "ACTIVE") throw new ApiError(409, "CUSTOMER_INACTIVE", "The customer is no longer active.");
       await enableInventoryPosting(tx);
@@ -514,7 +523,7 @@ export async function postSalesInvoice(actor: SalesActor, id: string) {
         branchId: invoice.branchId,
         postingDate: invoice.invoiceDate,
         preparedById: invoice.preparedById,
-        approvedById: invoice.approvedById,
+        approvedById: invoice.approvedById || actor.userId,
         documentType: "SALES_INVOICE_JOURNAL",
         voucherSuffix: "SV",
         sourceModule: "SALES",
