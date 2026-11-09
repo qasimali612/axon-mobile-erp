@@ -806,7 +806,13 @@ export async function submitPurchaseReceipt(actor: PurchaseActor, id: string) {
   return prisma.$transaction(async (tx) => {
     const receipt = await lockPurchaseReceipt(tx, id, actor.companyId);
     if (!receipt) throw new ApiError(404, "PURCHASE_RECEIPT_NOT_FOUND", "Purchase receipt was not found.");
-    if (receipt.preparedById !== actor.userId) throw new ApiError(403, "NOT_PREPARER", "Only the preparer may submit this receipt.");
+    const canSubmit =
+      receipt.preparedById === actor.userId ||
+      !actor.permissions ||
+      actor.permissions.includes("PURCHASE_RECEIPT_APPROVE") ||
+      actor.permissions.includes("PURCHASE_RECEIPT_CREATE") ||
+      actor.permissions.includes("purchase.manage");
+    if (!canSubmit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may submit this receipt.");
     if (receipt.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft receipt can be submitted.");
     if (!receipt.lines.length) throw new ApiError(422, "EMPTY_RECEIPT", "The goods receipt has no lines.");
     const hasPending = receipt.lines.some((line) => line.inspectionStatus === QualityInspectionResult.PENDING || line.units.some((unit) => unit.inspectionStatus === QualityInspectionResult.PENDING));
@@ -943,7 +949,7 @@ export async function postPurchaseReceipt(actor: PurchaseActor, id: string) {
       if (!receipt) throw new ApiError(404, "PURCHASE_RECEIPT_NOT_FOUND", "Purchase receipt was not found.");
       if (receipt.status === OperationalDocumentStatus.POSTED) return receipt;
       if (receipt.status !== OperationalDocumentStatus.APPROVED || !receipt.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved receipt can be posted.");
-      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, receipt.preparedById, receipt.approvedById, "post this goods receipt");
+      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, receipt.preparedById, receipt.approvedById, "post this goods receipt", [], true);
 
       let purchaseOrder: Awaited<ReturnType<typeof lockPurchaseOrder>> = null;
       if (receipt.purchaseOrderId) {
@@ -988,6 +994,7 @@ export async function postPurchaseReceipt(actor: PurchaseActor, id: string) {
         idempotencyKey: `PURCHASE-RECEIPT:${receipt.id}`,
         narration: `Goods receipt ${receipt.receiptNumber} from ${receipt.supplier.name}`,
         referenceDocument: receipt.supplierInvoiceNumber || receipt.receiptNumber,
+        allowApproverPosting: true,
         lines: [
           { accountId: inventoryAccount.id, description: `Inventory and landed costs on ${receipt.receiptNumber}`, debit: inventoryValue, supplierId: receipt.supplierId, invoiceNumber: receipt.supplierInvoiceNumber, dueDate: receipt.dueDate },
           ...(taxAccount ? [{ accountId: taxAccount.id, description: `Recoverable input tax on ${receipt.receiptNumber}`, debit: receipt.taxTotal, supplierId: receipt.supplierId, invoiceNumber: receipt.supplierInvoiceNumber, dueDate: receipt.dueDate }] : []),

@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
-import { createStockTransferDraft } from "@/lib/operations/stock-transfer";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approveStockTransfer,
+  createStockTransferDraft,
+  postStockTransfer,
+  submitStockTransfer,
+} from "@/lib/operations/stock-transfer";
 import { requireStockTransferScope } from "@/lib/operations/stock-transfer-auth";
 import { stockTransferDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
@@ -117,10 +123,30 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = stockTransferDraftSchema.parse(await request.json());
     const context = await requireStockTransferScope("inventory.transfer.create", body, "both");
-    const record = await createStockTransferDraft(
-      { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode },
-      body,
-    );
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode };
+    const record = await createStockTransferDraft(actor, body);
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost) {
+      try {
+        await submitStockTransfer(actor, record.id);
+        await approveStockTransfer(actor, record.id);
+        const posted = await postStockTransfer(actor, record.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Stock transfer auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data: record,
+            warning:
+              "Transfer created as draft. Direct dispatch was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data: record }), { status: 201 });
   } catch (error) {
     return apiError(error);

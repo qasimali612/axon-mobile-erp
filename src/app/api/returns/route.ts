@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, Prisma, StockReturnType } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requireAuth, requirePermission } from "@/lib/auth";
-import { createStockReturnDraft } from "@/lib/operations/stock-return";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approveStockReturn,
+  createStockReturnDraft,
+  postStockReturn,
+  submitStockReturn,
+} from "@/lib/operations/stock-return";
 import { stockReturnDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -27,10 +33,34 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const body = stockReturnDraftSchema.parse(await request.json());
+    assertSameOrigin(request);
+    const body = stockReturnDraftSchema.parse(await request.json());
     const permission = body.returnType === StockReturnType.SALES_RETURN ? "SALES_RETURN_CREATE" : "PURCHASE_RETURN_CREATE";
     const context = await requirePermission(permission, { branchId: body.branchId, warehouseId: body.warehouseId });
-    const data = await createStockReturnDraft({ companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode }, body);
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode };
+    const data = await createStockReturnDraft(actor, body);
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost) {
+      try {
+        await submitStockReturn(actor, data.id);
+        await approveStockReturn(actor, data.id);
+        const posted = await postStockReturn(actor, data.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Stock return auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data,
+            warning:
+              "Return created as draft. Direct posting was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data }), { status: 201 });
   } catch (error) { return apiError(error); }
 }

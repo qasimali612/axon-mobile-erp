@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, Prisma } from "@prisma/client";
 import { apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
-import { createStockAdjustmentDraft } from "@/lib/operations/stock-adjustment";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  createStockAdjustmentDraft,
+  postStockAdjustment,
+  submitStockAdjustment,
+} from "@/lib/operations/stock-adjustment";
 import { stockAdjustmentDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -62,7 +67,29 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = stockAdjustmentDraftSchema.parse(await request.json());
     const context = await requirePermission("inventory.stock.adjust", { branchId: body.branchId, warehouseId: body.warehouseId });
-    const data = await createStockAdjustmentDraft({ companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode }, body);
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode };
+    const data = await createStockAdjustmentDraft(actor, body);
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost) {
+      try {
+        await submitStockAdjustment(actor, data.id);
+        const posted = await postStockAdjustment(actor, data.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Stock adjustment auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data,
+            warning:
+              "Adjustment created as draft. Direct posting was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data }), { status: 201 });
   } catch (error) { return apiError(error); }
 }

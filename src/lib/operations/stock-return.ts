@@ -136,7 +136,7 @@ export async function postStockReturn(actor: ReturnActor, id: string) {
     const record = await lockReturn(tx, id, actor.companyId); if (!record) throw new ApiError(404, "RETURN_NOT_FOUND", "Return document was not found.");
     if (record.status === OperationalDocumentStatus.POSTED) return record;
     if (record.status !== OperationalDocumentStatus.APPROVED || !record.approvedById) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only an approved return can be posted.");
-    await assertSegregationOfDuties(tx, actor.companyId, actor.userId, record.preparedById, record.approvedById, "post this stock return");
+    await assertSegregationOfDuties(tx, actor.companyId, actor.userId, record.preparedById, record.approvedById, "post this stock return", [], true);
     if (record.returnType === StockReturnType.SALES_RETURN) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SalesInvoice" WHERE "id" = ${record.salesInvoiceId}::uuid FOR UPDATE`);
     else await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReceipt" WHERE "id" = ${record.purchaseReceiptId}::uuid FOR UPDATE`);
     const sourceDocument = record.returnType === StockReturnType.SALES_RETURN ? record.salesInvoice : record.purchaseReceipt;
@@ -175,7 +175,23 @@ export async function postStockReturn(actor: ReturnActor, id: string) {
       ...(variance.gt(0) ? [{ accountId: cogs.id, description: `Unrecoverable landed cost ${record.returnNumber}`, debit: variance, supplierId: record.supplierId }] : variance.lt(0) ? [{ accountId: cogs.id, description: `Purchase return cost variance ${record.returnNumber}`, credit: variance.abs(), supplierId: record.supplierId }] : []),
     ];
     const postingLines = journalLines.filter((line) => decimal(line.debit || line.credit || "0").gt(0));
-    const journal = await postOperationalJournal(tx, { actor, branchId: record.branchId, postingDate: record.returnDate, preparedById: record.preparedById, approvedById: record.approvedById, documentType: record.returnType === StockReturnType.SALES_RETURN ? "SALES_RETURN_JOURNAL" : "PURCHASE_RETURN_JOURNAL", voucherSuffix: record.returnType === StockReturnType.SALES_RETURN ? "SRV" : "PRV", sourceModule: "RETURNS", sourceDocumentType: "StockReturn", sourceDocumentId: record.id, sourceDocumentNumber: record.returnNumber, idempotencyKey: `STOCK-RETURN:${record.id}`, narration: `${record.returnType.replaceAll("_", " ")} ${record.returnNumber}`, lines: postingLines });
+    const journal = await postOperationalJournal(tx, {
+      actor,
+      branchId: record.branchId,
+      postingDate: record.returnDate,
+      preparedById: record.preparedById,
+      approvedById: record.approvedById,
+      documentType: record.returnType === StockReturnType.SALES_RETURN ? "SALES_RETURN_JOURNAL" : "PURCHASE_RETURN_JOURNAL",
+      voucherSuffix: record.returnType === StockReturnType.SALES_RETURN ? "SRV" : "PRV",
+      sourceModule: "RETURNS",
+      sourceDocumentType: "StockReturn",
+      sourceDocumentId: record.id,
+      sourceDocumentNumber: record.returnNumber,
+      idempotencyKey: `STOCK-RETURN:${record.id}`,
+      narration: `${record.returnType.replaceAll("_", " ")} ${record.returnNumber}`,
+      allowApproverPosting: true,
+      lines: postingLines,
+    });
 
     const movementGroupId = crypto.randomUUID();
     for (const line of record.lines) {

@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, PaymentDirection, Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
-import { createSalesInvoiceDraft } from "@/lib/operations/sales";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approveSalesInvoice,
+  createSalesInvoiceDraft,
+  postSalesInvoice,
+  submitSalesInvoice,
+} from "@/lib/operations/sales";
 import { salesInvoiceDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -200,7 +206,30 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = salesInvoiceDraftSchema.parse(await request.json());
     const context = await requirePermission("SALES_INVOICE_CREATE", { branchId: body.branchId, warehouseId: body.warehouseId });
-    const invoice = await createSalesInvoiceDraft({ companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode }, body);
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode, permissions: context.permissions };
+    const invoice = await createSalesInvoiceDraft(actor, body);
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost) {
+      try {
+        await submitSalesInvoice(actor, invoice.id);
+        await approveSalesInvoice({ ...actor, overrideReason: "Single-user auto-post approval" }, invoice.id);
+        const posted = await postSalesInvoice(actor, invoice.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Sales invoice auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data: invoice,
+            warning:
+              "Invoice created as draft. Direct posting was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data: invoice }), { status: 201 });
   } catch (error) { return apiError(error); }
 }

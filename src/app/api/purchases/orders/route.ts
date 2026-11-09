@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
-import { createPurchaseOrderDraft } from "@/lib/operations/purchase";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approvePurchaseOrder,
+  createPurchaseOrderDraft,
+  submitPurchaseOrder,
+} from "@/lib/operations/purchase";
 import { purchaseOrderDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -126,11 +131,33 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = purchaseOrderDraftSchema.parse(await request.json());
     const context = await requirePermission("PURCHASE_ORDER_CREATE", { branchId: body.branchId, warehouseId: body.warehouseId });
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode };
     const order = await createPurchaseOrderDraft(
-      { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode },
+      actor,
       body,
       { allowTaxOverride: context.permissions.includes("PURCHASE_TAX_OVERRIDE") },
     );
+
+    const willAutoApprove = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoApprove) {
+      try {
+        await submitPurchaseOrder(actor, order.id);
+        const approved = await approvePurchaseOrder(actor, order.id);
+        return NextResponse.json(jsonSafe({ data: approved }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Purchase order auto-approval deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data: order,
+            warning:
+              "Purchase order created as draft. Direct approval was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data: order }), { status: 201 });
   } catch (error) {
     return apiError(error);

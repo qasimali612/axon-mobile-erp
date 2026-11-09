@@ -137,6 +137,7 @@ export function PaymentRegister({
   const [editingPaymentNumber, setEditingPaymentNumber] = useState<string | null>(null);
   const [segregationAlert, setSegregationAlert] = useState<{ payment: PaymentRow; message: string } | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
+  const [batchPosting, setBatchPosting] = useState(false);
   const prefillApplied = useRef(false);
 
   const can = (key: string) => permissions.includes(key);
@@ -439,6 +440,26 @@ export function PaymentRegister({
       toast.error(err instanceof Error ? err.message : "Failed to switch operating mode.");
     } finally {
       setSwitchingMode(false);
+    }
+  }
+
+  async function handleBatchAutoPost() {
+    setBatchPosting(true);
+    try {
+      const res = await fetch("/api/payments/batch-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message || "Batch auto-post failed.");
+      const count = body?.data?.postedCount || 0;
+      toast.success(`⚡ Auto-posted ${count} payment voucher(s) directly to General Ledger!`);
+      void load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Batch auto-post failed.");
+    } finally {
+      setBatchPosting(false);
     }
   }
 
@@ -797,6 +818,22 @@ export function PaymentRegister({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {metrics.pendingCount > 0 && can("PAYMENT_POST") && (
+            <Button
+              type="button"
+              disabled={batchPosting}
+              onClick={() => void handleBatchAutoPost()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm font-semibold text-xs"
+              title="Auto-post all submitted and approved payments directly to General Ledger"
+            >
+              {batchPosting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4 fill-amber-300 text-amber-200" />
+              )}
+              ⚡ Auto-Post All Awaiting ({metrics.pendingCount})
+            </Button>
+          )}
           <Button variant="outline" onClick={() => void load()}>
             <RefreshCw className="h-4 w-4" /> Refresh
           </Button>

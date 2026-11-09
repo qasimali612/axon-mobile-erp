@@ -29,6 +29,7 @@ export const purchaseOrderDraftSchema = z.object({
   freightTotal: nonnegativeMoney.default("0"),
   otherCharges: nonnegativeMoney.default("0"),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     productId: operationUuid,
@@ -72,6 +73,7 @@ export const purchaseReceiptDraftSchema = z.object({
   freightTotal: nonnegativeMoney.default("0"),
   otherCharges: nonnegativeMoney.default("0"),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     orderLineId: operationUuid.optional().nullable(),
@@ -122,6 +124,7 @@ export const salesInvoiceDraftSchema = z.object({
   dueDate: operationDate.optional().nullable(),
   currencyCode: z.string().trim().length(3).toUpperCase().default("PKR"),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     productId: operationUuid,
@@ -147,6 +150,7 @@ export const stockReturnDraftSchema = z.object({
   currencyCode: z.string().trim().length(3).toUpperCase().default("PKR"),
   reason: z.string().trim().min(10).max(500),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     sourceLineId: operationUuid,
@@ -167,6 +171,7 @@ export const stockTransferDraftSchema = z.object({
   reference: z.string().trim().max(100).optional().nullable(),
   reason: z.string().trim().min(3).max(200),
   remarks: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     productId: operationUuid,
@@ -191,6 +196,7 @@ export const stockAdjustmentDraftSchema = z.object({
   reasonCode: z.string().trim().min(2).max(40).toUpperCase(),
   reason: z.string().trim().min(10).max(500),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   lines: z.array(z.object({
     productId: operationUuid,
@@ -245,6 +251,7 @@ export const paymentDraftSchema = z.object({
   amount: positiveDecimal,
   reference: z.string().trim().max(120).optional().nullable(),
   notes: z.string().trim().max(2_000).optional().nullable(),
+  autoPost: z.boolean().optional(),
   idempotencyKey,
   allocations: z.array(z.object({
     salesInvoiceId: operationUuid.optional().nullable(),

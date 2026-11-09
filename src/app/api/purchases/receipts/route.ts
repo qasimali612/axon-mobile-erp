@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, PaymentDirection, Prisma, PurchaseReceiptType, QualityInspectionResult } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
-import { createPurchaseReceiptDraft } from "@/lib/operations/purchase";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approvePurchaseReceipt,
+  createPurchaseReceiptDraft,
+  postPurchaseReceipt,
+  submitPurchaseReceipt,
+} from "@/lib/operations/purchase";
 import { purchaseReceiptDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -154,8 +160,9 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = purchaseReceiptDraftSchema.parse(await request.json());
     const context = await requirePermission("PURCHASE_RECEIPT_CREATE", { branchId: body.branchId, warehouseId: body.warehouseId });
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode, permissions: context.permissions };
     const receipt = await createPurchaseReceiptDraft(
-      { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode },
+      actor,
       body,
       {
         allowTaxOverride: context.permissions.includes("PURCHASE_TAX_OVERRIDE"),
@@ -163,6 +170,28 @@ export async function POST(request: Request) {
         allowOverReceipt: context.permissions.includes("PURCHASE_OVER_RECEIPT"),
       },
     );
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost && !receipt.requiresInspection) {
+      try {
+        await submitPurchaseReceipt(actor, receipt.id);
+        await approvePurchaseReceipt(actor, receipt.id);
+        const posted = await postPurchaseReceipt(actor, receipt.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Goods receipt auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data: receipt,
+            warning:
+              "Goods receipt created as draft. Direct posting was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data: receipt }), { status: 201 });
   } catch (error) { return apiError(error); }
 }

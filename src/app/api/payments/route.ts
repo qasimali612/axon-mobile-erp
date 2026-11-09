@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { OperationalDocumentStatus, PaymentDirection } from "@prisma/client";
 import { apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedBranchIds, requirePermission } from "@/lib/auth";
-import { createPaymentDraft } from "@/lib/operations/payments";
+import { shouldAutoPost } from "@/lib/operating-mode";
+import {
+  approvePayment,
+  createPaymentDraft,
+  postPayment,
+  submitPayment,
+} from "@/lib/operations/payments";
 import { paymentDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -42,7 +48,30 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const body = paymentDraftSchema.parse(await request.json());
     const context = await requirePermission("PAYMENT_CREATE", { branchId: body.branchId });
-    const payment = await createPaymentDraft({ companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode }, body);
+    const actor = { companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode, permissions: context.permissions };
+    const payment = await createPaymentDraft(actor, body);
+
+    const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
+    if (willAutoPost) {
+      try {
+        await submitPayment(actor, payment.id);
+        await approvePayment(actor, payment.id);
+        const posted = await postPayment(actor, payment.id);
+        return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
+      } catch (autoErr) {
+        console.warn("Payment auto-post deferred to draft:", autoErr);
+        return NextResponse.json(
+          jsonSafe({
+            data: payment,
+            warning:
+              "Payment saved as draft. Direct posting was deferred: " +
+              (autoErr instanceof Error ? autoErr.message : String(autoErr)),
+          }),
+          { status: 201 }
+        );
+      }
+    }
+
     return NextResponse.json(jsonSafe({ data: payment }), { status: 201 });
   } catch (error) { return apiError(error); }
 }

@@ -76,6 +76,23 @@ export async function isSingleUserMode(
 }
 
 /**
+ * Determines whether a new operational document should be auto-posted.
+ * In Single-User Mode: Defaults to true (auto-post directly to stock and General Ledger)
+ * unless explicitly requested as draft (e.g. autoPost === false).
+ * In Multi-User Mode: Defaults to false (enforces draft -> submit -> checker approval -> poster segregation)
+ * unless explicitly requested.
+ */
+export async function shouldAutoPost(
+  tx: Prisma.TransactionClient | typeof prisma = prisma,
+  companyId: string,
+  explicitAutoPost?: boolean | null,
+): Promise<boolean> {
+  if (explicitAutoPost === false) return false;
+  if (explicitAutoPost === true) return true;
+  return isSingleUserMode(tx, companyId);
+}
+
+/**
  * Updates the Operating Mode. Only authorized administrators may change operating modes.
  * Mode switching preserves 100% of existing data, transactions, inventory, and audit logs.
  */

@@ -71,6 +71,7 @@ export function SalesManager({
   const [creditOverrideReason, setCreditOverrideReason] = useState("");
   const [segregationAlert, setSegregationAlert] = useState<{ invoice: any; message: string } | null>(null);
   const [switchingMode, setSwitchingMode] = useState(false);
+  const [batchPosting, setBatchPosting] = useState(false);
   const [activeTab, setActiveTab] = useState<"ALL" | "AWAITING" | "POSTED" | "DRAFT" | "UNPAID">("ALL");
 
   const [search, setSearch] = useState("");
@@ -164,6 +165,26 @@ export function SalesManager({
       toast.error(err instanceof Error ? err.message : "Failed to switch operating mode.");
     } finally {
       setSwitchingMode(false);
+    }
+  }
+
+  async function handleBatchAutoPost() {
+    setBatchPosting(true);
+    try {
+      const res = await fetch("/api/sales/invoices/batch-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message || "Batch auto-post failed.");
+      const count = body?.data?.postedCount || 0;
+      toast.success(`⚡ Auto-posted ${count} invoice(s) atomically to stock & General Ledger!`);
+      void load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Batch auto-post failed.");
+    } finally {
+      setBatchPosting(false);
     }
   }
 
@@ -324,6 +345,22 @@ export function SalesManager({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {metrics.pending > 0 && can("SALES_INVOICE_POST") && (
+            <Button
+              type="button"
+              disabled={batchPosting}
+              onClick={() => void handleBatchAutoPost()}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+              title="Auto-post all submitted and approved invoices directly to stock and General Ledger"
+            >
+              {batchPosting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4 fill-amber-300 text-amber-200" />
+              )}
+              ⚡ Auto-Post All Awaiting ({metrics.pending})
+            </Button>
+          )}
           {can("SALES_INVOICE_CREATE") && (
             <Link
               href="/pos"
