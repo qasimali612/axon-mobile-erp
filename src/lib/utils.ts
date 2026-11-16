@@ -15,9 +15,10 @@ export function initials(name: string) {
 }
 
 export function formatMoney(value: number | string | bigint, currency = "PKR") {
-  const raw = String(value).trim();
+  const safeCurrency = currency && typeof currency === "string" && currency.trim().length === 3 ? currency.trim().toUpperCase() : "PKR";
+  const raw = String(value ?? 0).trim();
   const match = raw.match(/^(-?)(\d+)(?:\.(\d+))?$/);
-  if (!match) return `${currency} —`;
+  if (!match) return `${safeCurrency} —`;
   const negative = match[1] === "-";
   let whole = BigInt(match[2]);
   const fraction = (match[3] || "").padEnd(1, "0");
@@ -25,20 +26,31 @@ export function formatMoney(value: number | string | bigint, currency = "PKR") {
   // currency unit without converting the source value through IEEE-754.
   if (fraction[0] >= "5") whole += 1n;
   if (negative) whole = -whole;
-  return new Intl.NumberFormat("en-PK", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(whole);
+  try {
+    return new Intl.NumberFormat("en-PK", {
+      style: "currency",
+      currency: safeCurrency,
+      maximumFractionDigits: 0,
+    }).format(whole);
+  } catch {
+    return `${safeCurrency} ${whole.toString()}`;
+  }
 }
 
-export function formatDate(value: string | Date, withTime = false) {
-  return new Intl.DateTimeFormat("en-PK", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(new Date(value));
+export function formatDate(value: string | Date | null | undefined, withTime = false) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-PK", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
+    }).format(d);
+  } catch {
+    return String(value);
+  }
 }
 
 export function titleCase(value: string) {

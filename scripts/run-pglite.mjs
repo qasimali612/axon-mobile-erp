@@ -33,7 +33,7 @@ const child = spawn(process.execPath, [
   `--db=${dbDir}`,
   `--port=${port}`,
   `--host=127.0.0.1`,
-  `--max-connections=20`
+  `--max-connections=100`
 ], {
   stdio: "inherit"
 });

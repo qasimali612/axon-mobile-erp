@@ -183,13 +183,91 @@ export async function apiError(error: unknown) {
     );
   }
 
+  if (errStr.includes("Can't reach database server") || errStr.includes("PrismaClientInitializationError")) {
+    console.error("[Database Connection Error]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "DATABASE_UNAVAILABLE",
+          message: "Database server connection could not be established. Please verify database connectivity.",
+        },
+      },
+      { status: 503 },
+    );
+  }
+
+  if (errStr.includes("Unique constraint failed") || errStr.includes("code: \"23505\"") || errStr.includes("P2002")) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "DUPLICATE_RECORD",
+          message: "A record with this identifier already exists.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  if (errStr.includes("Record to update not found") || errStr.includes("Record to delete does not exist") || errStr.includes("P2025")) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "NOT_FOUND",
+          message: "The requested record could not be found.",
+        },
+      },
+      { status: 404 },
+    );
+  }
+
+  if (errStr.includes("Foreign key constraint") || errStr.includes("code: \"23503\"") || errStr.includes("P2003")) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "FOREIGN_KEY_VIOLATION",
+          message: "The operation references a record that does not exist or has active dependencies.",
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  if (errStr.includes("violates check constraint") || errStr.includes("code: \"23514\"")) {
+    console.error("[Check Constraint Violation]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "VALIDATION_CONSTRAINT_ERROR",
+          message: "Operation violates accounting or operational workflow validation constraints.",
+        },
+      },
+      { status: 422 },
+    );
+  }
+
+  if (errStr.includes("does not exist") || errStr.includes("P2021")) {
+    console.error("[Table Not Found]:", errStr);
+    return NextResponse.json(
+      {
+        error: {
+          code: "SCHEMA_MISMATCH",
+          message: "Required database table or schema is not initialized. Please ensure migrations are applied.",
+        },
+      },
+      { status: 500 },
+    );
+  }
+
   // Always log unexpected server errors for operators; surface a clean message when available
   console.error("[Unexpected Server Error]:", error);
-  const rawMsg = error instanceof Error ? error.message : "";
-  const cleanMsg =
-    rawMsg && !rawMsg.includes("\n") && !rawMsg.includes("at ") && !rawMsg.includes("PrismaClient")
-      ? rawMsg
-      : "The request could not be completed.";
+  let cleanMsg = "An unexpected server error occurred.";
+  if (error instanceof Error && error.message) {
+    const lines = error.message.split("\n").map((l) => l.trim()).filter(Boolean);
+    const candidate = lines.find((l) => !l.startsWith("at ") && !l.includes("PrismaClient") && !l.includes("node_modules"));
+    if (candidate && candidate.length <= 200) {
+      cleanMsg = candidate;
+    }
+  }
   return NextResponse.json(
     { error: { code: "INTERNAL_ERROR", message: cleanMsg } },
     { status: 500 },

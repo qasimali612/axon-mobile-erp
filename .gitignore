@@ -12,5 +12,6 @@ coverage
 playwright-report
 test-results
 backups/
+scratch/
 *.tsbuildinfo
 .vercel
