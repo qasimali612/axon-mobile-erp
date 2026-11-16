@@ -51,7 +51,7 @@ export default async function JournalRegisterPage({ searchParams }: { searchPara
       take: 200,
     }),
     prisma.account.findMany({
-      where: { companyId, isActive: true, allowManualJournal: true },
+      where: { companyId, isActive: true },
       select: {
         id: true,
         code: true,

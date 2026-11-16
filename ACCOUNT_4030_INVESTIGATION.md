@@ -58,3 +58,4 @@ if (line.account.accountClass === AccountClass.REVENUE) {
 ---
 
 © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
+

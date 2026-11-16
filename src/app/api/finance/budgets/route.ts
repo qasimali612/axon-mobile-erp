@@ -26,7 +26,7 @@ export async function GET() {
         orderBy: [{ code: "asc" }, { version: "desc" }],
       }),
       prisma.fiscalYear.findMany({ where: { companyId }, select: { id: true, code: true, name: true, isCurrent: true }, orderBy: { startDate: "desc" } }),
-      prisma.account.findMany({ where: { companyId, isActive: true, allowManualJournal: true }, select: { id: true, code: true, name: true, accountClass: true }, orderBy: { code: "asc" } }),
+      prisma.account.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true, accountClass: true }, orderBy: { code: "asc" } }),
       prisma.accountingPeriod.findMany({ where: { companyId }, select: { id: true, name: true, number: true, fiscalYearId: true, status: true }, orderBy: [{ fiscalYear: { startDate: "desc" } }, { number: "asc" }] }),
       prisma.branch.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
       prisma.department.findMany({ where: { companyId, isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),

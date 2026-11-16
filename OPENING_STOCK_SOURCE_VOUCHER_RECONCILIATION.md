@@ -56,3 +56,4 @@ The opening stock value of **PKR 1,025,740** comprises three posted operational 
 ---
 
 © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
+
