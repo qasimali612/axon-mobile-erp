@@ -203,9 +203,9 @@ export default async function FinanceDashboardPage({ searchParams }: { searchPar
     },
     {
       label: "Other Non-Operating Income",
-      code: "4010-4030",
+      code: "4010-4020",
       value: report.metrics.otherIncome,
-      detail: `Stock adjustment gain: ${formatMoney(report.metrics.inventoryAdjustmentGain.toString(), currency)}`,
+      detail: report.metrics.otherIncome.gt(0) ? `Operating rebates/incentives: ${formatMoney(report.metrics.otherIncome.toString(), currency)}` : "No non-operating income",
       icon: Info,
       tone: "bg-purple-50 text-purple-700 border-purple-200",
     },
@@ -213,7 +213,7 @@ export default async function FinanceDashboardPage({ searchParams }: { searchPar
       label: "Net Profit for Period",
       code: "Bottom Line",
       value: report.metrics.netProfit,
-      detail: "Posted double-entry net surplus",
+      detail: "Pure trading net profit (opening stock isolated to equity)",
       icon: Scale,
       tone: report.metrics.netProfit.gte(0) ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-800 border-red-200",
     },
@@ -277,9 +277,9 @@ export default async function FinanceDashboardPage({ searchParams }: { searchPar
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg bg-white/80 p-2.5 border border-blue-100">
-            <span className="font-semibold text-blue-900">1. Opening Stock Gain Disclosed Separately:</span>
+            <span className="font-semibold text-blue-900">1. Opening Stock Equity Reserve:</span>
             <p className="mt-0.5 text-[11px] text-slate-600 leading-relaxed">
-              Account 4030 has {formatMoney(report.metrics.inventoryAdjustmentGain.toString(), currency)} from initial stock transfers (ISB--SAV-000001..3). This is segregated from Operating Sales ({formatMoney(report.metrics.netSalesRevenue.toString(), currency)}) to reflect true trading gross margin ({report.metrics.grossMarginPercent.toString()}%).
+              Account 4030 has {formatMoney(report.metrics.inventoryAdjustmentGain.toString(), currency)} from initial opening stock entries (ISB--SAV-000001..3). This is isolated from Profit & Loss and recognized as Opening Stock Equity Reserve under Balance Sheet Equity to reflect authentic trading gross margin ({report.metrics.grossMarginPercent.toString()}%) and true net profit ({formatMoney(report.metrics.netProfit.toString(), currency)}).
             </p>
           </div>
           <div className="rounded-lg bg-white/80 p-2.5 border border-blue-100">
@@ -469,8 +469,8 @@ export default async function FinanceDashboardPage({ searchParams }: { searchPar
             {[
               ["Total Assets", report.balanceSheetCheck.assets],
               ["Total Liabilities", report.balanceSheetCheck.liabilities],
-              ["Shareholder Equity", report.balanceSheetCheck.equity],
-              ["Cumulative Earnings", report.balanceSheetCheck.cumulativeEarnings],
+              ["Shareholder Equity (Capital & Reserves)", report.balanceSheetCheck.equity],
+              ["Cumulative Operating Earnings", report.balanceSheetCheck.cumulativeEarnings],
             ].map(([label, value]) => (
               <div key={String(label)} className="flex justify-between py-3 text-xs">
                 <dt className="text-slate-500">{String(label)}</dt>

@@ -548,15 +548,22 @@ export async function postStockAdjustmentRecord(
         allowApproverPosting: true,
       })
     : await (async () => {
-        const [inventory, gain, loss] = await Promise.all([
+        const isOpeningStock = (record.reason || "").toUpperCase().includes("OPENING");
+        const [inventory, gain, loss, openingEquity] = await Promise.all([
           requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "INVENTORY" }),
-          increaseValue.gt(0) ? requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "INVENTORY_ADJUSTMENT_GAIN" }) : Promise.resolve(null),
+          increaseValue.gt(0) && !isOpeningStock ? requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "INVENTORY_ADJUSTMENT_GAIN" }) : Promise.resolve(null),
           decreaseValue.gt(0) ? requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "INVENTORY_ADJUSTMENT_LOSS" }) : Promise.resolve(null),
+          increaseValue.gt(0) && isOpeningStock
+            ? requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "RETAINED_EARNINGS" }).catch(() =>
+                requirePostingAccount(tx, { companyId: actor.companyId, branchId: record.branchId, accountType: "CAPITAL" }),
+              )
+            : Promise.resolve(null),
         ]);
+        const creditAccount = isOpeningStock ? (openingEquity || gain!) : gain!;
         const lines: SourceJournalLine[] = [
           ...(increaseValue.gt(0) ? [
             { accountId: inventory.id, description: `Inventory increase ${record.adjustmentNumber}`, debit: increaseValue },
-            { accountId: gain!.id, description: `Inventory adjustment gain ${record.adjustmentNumber}`, credit: increaseValue },
+            { accountId: creditAccount.id, description: isOpeningStock ? `Opening stock equity ${record.adjustmentNumber}` : `Inventory adjustment gain ${record.adjustmentNumber}`, credit: increaseValue },
           ] : []),
           ...(decreaseValue.gt(0) ? [
             { accountId: loss!.id, description: `Inventory adjustment loss ${record.adjustmentNumber}`, debit: decreaseValue },

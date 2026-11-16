@@ -182,13 +182,13 @@ export default async function FinancialStatementsPage({ searchParams }: { search
             <span className="tabular-nums text-sm">{formatMoney(statement.multiStepPnl.operatingProfit.toString(), currency)}</span>
           </div>
 
-          {/* 4. Other Non-Operating Income & Adjustments */}
+          {/* 4. Other Non-Operating Income */}
           <div className="border-b border-slate-100 py-3">
-            <p className="mb-2 text-[9px] font-bold uppercase tracking-wider text-purple-700">4. Other Non-Operating Income (Stock Adjustment Gain)</p>
+            <p className="mb-2 text-[9px] font-bold uppercase tracking-wider text-slate-400">4. Other Non-Operating Income</p>
             {statement.multiStepPnl.otherIncomeAccounts.map((row) => (
               <Line key={row.id} label={`${row.code} · ${row.name}`} value={formatMoney(row.amount.toString(), currency)} href={`/finance/journals?account=${row.id}`} />
             ))}
-            {!statement.multiStepPnl.otherIncomeAccounts.length ? <p className="py-1 text-[10px] text-slate-400">No other income</p> : null}
+            {!statement.multiStepPnl.otherIncomeAccounts.length ? <p className="py-1 text-[10px] text-slate-400">No other operating income (opening stock isolated to equity reserve)</p> : null}
             <div className="mt-1 flex justify-between text-xs font-semibold text-slate-800">
               <span>Total Other Income</span>
               <span className="tabular-nums">{formatMoney(statement.multiStepPnl.otherIncome.toString(), currency)}</span>
@@ -212,7 +212,7 @@ export default async function FinancialStatementsPage({ searchParams }: { search
             <Line label="Gross Trading Profit" value={formatMoney(statement.multiStepPnl.grossProfit.toString(), currency)} strong />
             <Line label="Operating Expenses" value={formatMoney(statement.multiStepPnl.operatingExpenses.toString(), currency)} />
             <Line label="Operating Profit (EBIT)" value={formatMoney(statement.multiStepPnl.operatingProfit.toString(), currency)} strong />
-            <Line label="Non-Operating Gains / Adjustments" value={formatMoney(statement.multiStepPnl.otherIncome.toString(), currency)} />
+            <Line label="Other Non-Operating Income" value={formatMoney(statement.multiStepPnl.otherIncome.toString(), currency)} />
             <div className="border-t border-slate-200 pt-2">
               <Line label="Net Profit / (Loss) for the Period" value={formatMoney(statement.multiStepPnl.netProfit.toString(), currency)} strong />
             </div>

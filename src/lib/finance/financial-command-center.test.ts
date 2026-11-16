@@ -116,25 +116,26 @@ describe("Axon Mobile ERP — Financial Command Center Master Test Suite", () =>
     });
   });
 
-  describe("Domain 8: Non-Operating Income & Expense Segregation", () => {
-    it("discloses inventory adjustment gains under other non-operating income", () => {
-      const inventoryGain = dec(1025740);
+  describe("Domain 8: Non-Operating Income & Opening Stock Segregation", () => {
+    it("isolates initial opening stock entries (Account 4030) from operating other income", () => {
+      const openingStockReserve = dec(1025740);
       const incentiveIncome = zero();
       const rebateIncome = zero();
-      const totalOtherIncome = inventoryGain.plus(incentiveIncome).plus(rebateIncome);
+      const operatingOtherIncome = incentiveIncome.plus(rebateIncome);
 
-      expect(totalOtherIncome.toString()).toBe("1025740");
+      expect(operatingOtherIncome.toString()).toBe("0");
+      expect(openingStockReserve.toString()).toBe("1025740");
     });
   });
 
   describe("Domain 9: Bottom-Line Net Profit Consistency", () => {
-    it("produces net profit as Operating Profit plus Other Income minus Other Expenses", () => {
+    it("produces authentic trading net profit strictly from operating activity", () => {
       const operatingProfit = dec(16966);
-      const otherIncome = dec(1025740);
+      const otherIncome = zero(); // Opening stock excluded from P&L
       const otherExpenses = zero();
       const netProfit = operatingProfit.plus(otherIncome).minus(otherExpenses);
 
-      expect(netProfit.toString()).toBe("1042706");
+      expect(netProfit.toString()).toBe("16966");
     });
   });
 
@@ -155,12 +156,13 @@ describe("Axon Mobile ERP — Financial Command Center Master Test Suite", () =>
   });
 
   describe("Domain 11: Balance Sheet Equation Verification (Assets = Liabilities + Equity)", () => {
-    it("verifies zero variance in the balance sheet equation without artificial plugs", () => {
+    it("verifies zero variance in the balance sheet equation with opening stock reserve and operating profit", () => {
       const totalAssets = dec(973566);
       const totalLiabilities = zero();
       const shareCapital = dec(-69140); // Due to historical reversed opening voucher
-      const currentYearEarnings = dec(1042706);
-      const totalEquity = shareCapital.plus(currentYearEarnings);
+      const openingStockReserve = dec(1025740); // Account 4030 classified under equity reserve
+      const currentYearOperatingEarnings = dec(16966); // Pure trading profit
+      const totalEquity = shareCapital.plus(openingStockReserve).plus(currentYearOperatingEarnings);
 
       expect(totalEquity.toString()).toBe("973566");
       const difference = totalAssets.minus(totalLiabilities.plus(totalEquity));

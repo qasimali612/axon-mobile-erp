@@ -1,6 +1,6 @@
 import "server-only";
 
-import { AccountClass, JournalStatus, Prisma } from "@prisma/client";
+import { AccountClass, JournalStatus, NormalBalance, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { zero } from "@/lib/finance/money";
 
@@ -115,7 +115,7 @@ export async function getFinanceDashboard(filters: FinanceFilters) {
       select: {
         baseDebit: true,
         baseCredit: true,
-        account: { select: { accountClass: true } },
+        account: { select: { code: true, accountClass: true } },
         entry: { select: { postingDate: true } },
       },
       orderBy: { entry: { postingDate: "asc" } },
@@ -176,7 +176,8 @@ export async function getFinanceDashboard(filters: FinanceFilters) {
     periodMap,
     (account) => ["INVENTORY_ADJUSTMENT_LOSS", "ASSET_DISPOSAL"].includes(account.accountType),
   );
-  const otherIncome = otherOperatingIncome.plus(inventoryAdjustmentGain);
+  // Opening stock adjustments in Account 4030 are balance sheet equity reserves and MUST NOT be counted as operating other income!
+  const otherIncome = otherOperatingIncome;
   const netProfit = operatingProfit.plus(otherIncome).minus(otherExpenses);
 
   // Asset & balance metrics
@@ -209,18 +210,20 @@ export async function getFinanceDashboard(filters: FinanceFilters) {
   const assets = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.ASSET);
   const liabilities = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.LIABILITY, true);
   const equity = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.EQUITY, true);
-  const cumulativeRevenue = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.REVENUE, true);
+  const cumulativeRevenue = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.REVENUE && account.code !== "4030", true);
   const cumulativeCogs = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.COGS);
   const cumulativeExpenses = sumAccounts(cumulativeMap, (account) => account.accountClass === AccountClass.EXPENSE);
   const cumulativeEarnings = cumulativeRevenue.minus(cumulativeCogs).minus(cumulativeExpenses);
-  const balanceDifference = assets.minus(liabilities.plus(equity).plus(cumulativeEarnings));
+  const openingStockReserve = sumAccounts(cumulativeMap, (account) => account.code === "4030", true);
+  const totalEquity = equity.plus(openingStockReserve);
+  const balanceDifference = assets.minus(liabilities.plus(totalEquity).plus(cumulativeEarnings));
 
   const trend = new Map<string, { revenue: Prisma.Decimal; cogs: Prisma.Decimal; expenses: Prisma.Decimal }>();
   for (const line of flowLines) {
     const key = line.entry.postingDate.toISOString().slice(0, 7);
     const item = trend.get(key) || { revenue: zero(), cogs: zero(), expenses: zero() };
     const value = signed(line.baseDebit, line.baseCredit);
-    if (line.account.accountClass === AccountClass.REVENUE) item.revenue = item.revenue.minus(value);
+    if (line.account.accountClass === AccountClass.REVENUE && line.account.code !== "4030") item.revenue = item.revenue.minus(value);
     if (line.account.accountClass === AccountClass.COGS) item.cogs = item.cogs.plus(value);
     if (line.account.accountClass === AccountClass.EXPENSE) item.expenses = item.expenses.plus(value);
     trend.set(key, item);
@@ -261,6 +264,7 @@ export async function getFinanceDashboard(filters: FinanceFilters) {
       operatingExpenses,
       operatingProfit,
       inventoryAdjustmentGain,
+      openingStockReserve,
       otherOperatingIncome,
       otherIncome,
       otherExpenses,
@@ -272,7 +276,8 @@ export async function getFinanceDashboard(filters: FinanceFilters) {
     balanceSheetCheck: {
       assets,
       liabilities,
-      equity,
+      equity: totalEquity,
+      openingStockReserve,
       cumulativeEarnings,
       difference: balanceDifference,
       balanced: balanceDifference.abs().lte(new Prisma.Decimal("0.0001")),
@@ -424,14 +429,38 @@ export async function getFinancialStatements(filters: FinanceFilters) {
     ([AccountClass.LIABILITY, AccountClass.EQUITY, AccountClass.REVENUE] as AccountClass[]).includes(accountClass) ? amount.negated() : amount;
 
   const profitAndLoss = accounts
-    .filter((account) => ([AccountClass.REVENUE, AccountClass.COGS, AccountClass.EXPENSE] as AccountClass[]).includes(account.accountClass))
+    .filter(
+      (account) =>
+        ([AccountClass.REVENUE, AccountClass.COGS, AccountClass.EXPENSE] as AccountClass[]).includes(account.accountClass) &&
+        account.code !== "4030",
+    )
     .map((account) => ({ ...account, amount: naturalAmount(account.accountClass, periodMap.get(account.id) || zero()) }))
     .filter((row) => !row.amount.isZero());
 
-  const balanceSheet = accounts
-    .filter((account) => ([AccountClass.ASSET, AccountClass.LIABILITY, AccountClass.EQUITY] as AccountClass[]).includes(account.accountClass))
-    .map((account) => ({ ...account, amount: naturalAmount(account.accountClass, cumulativeMap.get(account.id) || zero()) }))
-    .filter((row) => !row.amount.isZero());
+  const openingStockAccount = accounts.find((a) => a.code === "4030");
+  const openingStockReserve = openingStockAccount
+    ? naturalAmount(AccountClass.EQUITY, cumulativeMap.get(openingStockAccount.id) || zero())
+    : zero();
+
+  const balanceSheet = [
+    ...accounts
+      .filter((account) => ([AccountClass.ASSET, AccountClass.LIABILITY, AccountClass.EQUITY] as AccountClass[]).includes(account.accountClass))
+      .map((account) => ({ ...account, amount: naturalAmount(account.accountClass, cumulativeMap.get(account.id) || zero()) })),
+    ...(openingStockAccount && !openingStockReserve.isZero()
+      ? [
+          {
+            id: openingStockAccount.id,
+            code: "3200",
+            name: "Opening Stock Equity Reserve",
+            accountClass: AccountClass.EQUITY,
+            accountType: "OPENING_BALANCE_EQUITY",
+            normalBalance: NormalBalance.CREDIT,
+            group: { code: "300", name: "Equity", statementSection: "Equity", sequence: 300 },
+            amount: openingStockReserve,
+          },
+        ]
+      : []),
+  ].filter((row) => !row.amount.isZero());
 
   // Segregated multi-step calculations
   const salesRevenueAccounts = profitAndLoss.filter(
@@ -452,9 +481,7 @@ export async function getFinancialStatements(filters: FinanceFilters) {
   const otherIncomeAccounts = profitAndLoss.filter(
     (r) =>
       r.accountClass === AccountClass.REVENUE &&
-      (r.accountType === "INVENTORY_ADJUSTMENT_GAIN" ||
-        ["INCENTIVE_INCOME", "REBATE_INCOME"].includes(r.accountType) ||
-        r.code === "4030"),
+      ["INCENTIVE_INCOME", "REBATE_INCOME"].includes(r.accountType),
   );
   const otherIncome = otherIncomeAccounts.reduce((sum, r) => sum.plus(r.amount), zero());
 
@@ -501,7 +528,11 @@ export async function getFinancialStatements(filters: FinanceFilters) {
   const equity = equityList.reduce((sum, r) => sum.plus(r.amount), zero());
 
   const cumulativeProfitRows = accounts
-    .filter((account) => ([AccountClass.REVENUE, AccountClass.COGS, AccountClass.EXPENSE] as AccountClass[]).includes(account.accountClass))
+    .filter(
+      (account) =>
+        ([AccountClass.REVENUE, AccountClass.COGS, AccountClass.EXPENSE] as AccountClass[]).includes(account.accountClass) &&
+        account.code !== "4030",
+    )
     .map((account) => ({ ...account, amount: naturalAmount(account.accountClass, cumulativeMap.get(account.id) || zero()) }));
 
   const cumulativeEarnings = cumulativeProfitRows
@@ -556,6 +587,7 @@ export async function getFinancialStatements(filters: FinanceFilters) {
       otherExpenseAccounts,
       otherExpenses,
       netProfit,
+      openingStockReserve,
     },
     classifiedBalanceSheet: {
       currentAssetsList,
@@ -570,6 +602,7 @@ export async function getFinancialStatements(filters: FinanceFilters) {
       totalLiabilities: liabilities,
       equityList,
       equity,
+      openingStockReserve,
       cumulativeEarnings,
       totalEquityAndLiabilities: liabilities.plus(equity).plus(cumulativeEarnings),
       balanceDifference,
@@ -585,6 +618,7 @@ export async function getFinancialStatements(filters: FinanceFilters) {
       operatingProfit,
       otherIncome,
       otherExpenses,
+      openingStockReserve,
       netProfit,
       assets,
       currentAssets,
