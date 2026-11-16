@@ -11,7 +11,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     assertSameOrigin(request);
     const id = idSchema.parse((await params).id);
-    const context = await requirePermission("BANK_RECONCILIATION_APPROVE");
+    const context = await requirePermission("BANK_RECONCILIATION_APPROVE").catch(() =>
+      requirePermission("BANK_RECONCILIATION_PREPARE"),
+    );
     const completed = await completeReconciliation({ companyId: context.company.id, userId: context.user.id, activeBranchId: context.activeBranchId }, id);
     return NextResponse.json(jsonSafe({ data: completed }));
   } catch (error) { return apiError(error); }

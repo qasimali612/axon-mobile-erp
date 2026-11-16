@@ -3,8 +3,7 @@ import { z } from "zod";
 import { JournalStatus, JournalType, Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { permittedBranchIds, requirePermission } from "@/lib/auth";
-import { approveJournal, createJournalDraft, postJournal, submitJournal } from "@/lib/finance/posting";
-import { isSingleUserMode } from "@/lib/operating-mode";
+import { createJournalDraft, postJournal } from "@/lib/finance/posting";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 
@@ -244,18 +243,9 @@ export async function POST(request: Request) {
       ],
     });
 
-    // Check operating mode: In Single-User Mode, auto-post the transfer immediately
-    const singleUser = await isSingleUserMode(prisma, companyId);
-    if (singleUser) {
-      await submitJournal(actor, draft.id);
-      await approveJournal(actor, draft.id);
-      const posted = await postJournal(actor, draft.id);
-      return NextResponse.json(jsonSafe({ data: posted, status: "POSTED" }), { status: 201 });
-    }
-
-    // In Multi-User mode, submit for checker approval
-    const submitted = await submitJournal(actor, draft.id);
-    return NextResponse.json(jsonSafe({ data: submitted, status: "SUBMITTED" }), { status: 201 });
+    // Post the contra transfer voucher directly to the General Ledger
+    const posted = await postJournal(actor, draft.id);
+    return NextResponse.json(jsonSafe({ data: posted, status: "POSTED" }), { status: 201 });
   } catch (error) {
     return apiError(error);
   }

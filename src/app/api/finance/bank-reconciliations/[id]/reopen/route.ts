@@ -12,7 +12,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     assertSameOrigin(request);
     const id = idSchema.parse((await params).id);
-    const context = await requirePermission("BANK_RECONCILIATION_APPROVE");
+    const context = await requirePermission("BANK_RECONCILIATION_APPROVE").catch(() =>
+      requirePermission("BANK_RECONCILIATION_PREPARE"),
+    );
     const body = reconciliationReopenSchema.parse(await request.json());
     const reopened = await reopenReconciliation({ companyId: context.company.id, userId: context.user.id, activeBranchId: context.activeBranchId }, id, body.reason);
     return NextResponse.json(jsonSafe({ data: reopened }));

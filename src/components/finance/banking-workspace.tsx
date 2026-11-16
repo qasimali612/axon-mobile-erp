@@ -614,11 +614,7 @@ function TransferModal({
       return;
     }
 
-    toast.success(
-      body.status === "POSTED"
-        ? `Transfer ${body.data?.voucherNumber || ""} posted immediately.`
-        : `Transfer ${body.data?.voucherNumber || ""} submitted for verification.`
-    );
+    toast.success(`Transfer ${body.data?.voucherNumber || ""} posted immediately to General Ledger.`);
     onClose();
     await onSaved();
   }

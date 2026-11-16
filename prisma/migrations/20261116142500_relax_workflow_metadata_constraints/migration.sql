@@ -21,3 +21,4 @@ ALTER TABLE "PurchaseReceipt"
     ("status" NOT IN ('POSTED', 'REVERSED') OR ("postedById" IS NOT NULL AND "postedAt" IS NOT NULL AND "journalEntryId" IS NOT NULL))
     AND ("status" <> 'REVERSED' OR ("reversedById" IS NOT NULL AND "reversedAt" IS NOT NULL AND "reversalReason" IS NOT NULL AND length(trim("reversalReason")) > 0))
   );
+
