@@ -589,6 +589,14 @@ export async function deletePayment(actor: PaymentActor, id: string) {
         );
       }
 
+      // Revert parent status to DRAFT first so PaymentAllocation_parent_guard allows line deletion
+      if (payment.status !== OperationalDocumentStatus.DRAFT) {
+        await tx.payment.update({
+          where: { id },
+          data: { status: OperationalDocumentStatus.DRAFT, approvedById: null, approvedAt: null },
+        });
+      }
+
       await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
       await tx.payment.delete({ where: { id } });
 

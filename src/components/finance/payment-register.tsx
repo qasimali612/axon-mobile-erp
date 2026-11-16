@@ -427,12 +427,18 @@ export function PaymentRegister({
         body: JSON.stringify({}),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error?.message || "Batch auto-post failed.");
+      if (!res.ok) throw new Error(body?.error?.message || "Batch posting failed.");
       const count = body?.data?.postedCount || 0;
-      toast.success(`⚡ Auto-posted ${count} payment voucher(s) directly to General Ledger!`);
+      const failed = body?.data?.failedCount || 0;
+      if (failed > 0) {
+        const firstError = body?.data?.results?.find((r: any) => !r.success)?.error || "Some vouchers could not be posted";
+        toast.warning(`Posted ${count} voucher(s). ${failed} failed: ${firstError}`);
+      } else {
+        toast.success(`⚡ Posted all ${count} voucher(s) directly to General Ledger!`);
+      }
       void load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Batch auto-post failed.");
+      toast.error(err instanceof Error ? err.message : "Batch posting failed.");
     } finally {
       setBatchPosting(false);
     }
@@ -444,13 +450,7 @@ export function PaymentRegister({
       const postRes = await fetch(`/api/payments/${row.id}/post`, { method: "POST" });
       const body = await postRes.json().catch(() => null);
       if (!postRes.ok) {
-        await fetch(`/api/payments/${row.id}/submit`, { method: "POST" }).catch(() => null);
-        await fetch(`/api/payments/${row.id}/approve`, { method: "POST" }).catch(() => null);
-        const retryRes = await fetch(`/api/payments/${row.id}/post`, { method: "POST" });
-        const retryBody = await retryRes.json().catch(() => null);
-        if (!retryRes.ok) {
-          return toast.error(retryBody?.error?.message || body?.error?.message || "Failed to post payment.");
-        }
+        return toast.error(body?.error?.message || "Failed to post payment.");
       }
       toast.success(`${row.paymentNumber} posted to GL!`, {
         action: {
@@ -654,8 +654,6 @@ export function PaymentRegister({
         }
 
         try {
-          const subRes = await fetch(`/api/payments/${targetIdToPost}/submit`, { method: "POST" });
-          const appRes = await fetch(`/api/payments/${targetIdToPost}/approve`, { method: "POST" });
           const postRes = await fetch(`/api/payments/${targetIdToPost}/post`, { method: "POST" });
           if (postRes.ok) {
             toast.success(`${targetNumToPost || "Payment"} saved and posted to GL successfully!`, {
@@ -787,14 +785,14 @@ export function PaymentRegister({
               disabled={batchPosting}
               onClick={() => void handleBatchAutoPost()}
               className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm font-semibold text-xs"
-              title="Auto-post all submitted and approved payments directly to General Ledger"
+              title="Post all submitted payment vouchers directly to General Ledger"
             >
               {batchPosting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Zap className="h-4 w-4 fill-amber-300 text-amber-200" />
               )}
-              ⚡ Auto-Post All Awaiting ({metrics.pendingCount})
+              ⚡ Post All Submitted Vouchers ({metrics.pendingCount})
             </Button>
           )}
           <Button variant="outline" onClick={() => void load()}>
@@ -892,7 +890,7 @@ export function PaymentRegister({
                 ) : (
                   <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-200" />
                 )}
-                Post All ({metrics.pendingCount})
+                Post All Submitted ({metrics.pendingCount})
               </Button>
             )}
           </div>
@@ -1354,9 +1352,9 @@ export function PaymentRegister({
                       <b className="text-slate-900">{selectedPayment.preparedBy.fullName}</b>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Approved By</span>
+                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Document Status</span>
                       <b className="text-slate-900">
-                        {selectedPayment.approvedBy?.fullName || "Not yet approved"}
+                        {titleCase(selectedPayment.status)}
                       </b>
                     </div>
                     <div>

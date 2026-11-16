@@ -4,10 +4,8 @@ import { apiError, assertSameOrigin, parsePagination } from "@/lib/api";
 import { permittedBranchIds, requirePermission } from "@/lib/auth";
 import { shouldAutoPost } from "@/lib/operating-mode";
 import {
-  approvePayment,
   createPaymentDraft,
   postPayment,
-  submitPayment,
 } from "@/lib/operations/payments";
 import { paymentDraftSchema } from "@/lib/operations/validation";
 import { ensureSingleUserDatabase, prisma } from "@/lib/prisma";
@@ -55,8 +53,6 @@ export async function POST(request: Request) {
     const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
     if (willAutoPost) {
       try {
-        await submitPayment(actor, payment.id);
-        await approvePayment(actor, payment.id);
         const posted = await postPayment(actor, payment.id);
         return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
       } catch (autoErr) {

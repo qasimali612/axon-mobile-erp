@@ -1,19 +1,27 @@
 -- CreateEnum
-CREATE TYPE "ReceiptPrinterType" AS ENUM ('THERMAL_80MM', 'THERMAL_58MM', 'A4');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReceiptPrinterType') THEN
+    CREATE TYPE "ReceiptPrinterType" AS ENUM ('THERMAL_80MM', 'THERMAL_58MM', 'A4');
+  END IF;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PosShiftStatus" AS ENUM ('OPEN', 'CLOSED');
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PosShiftStatus') THEN
+    CREATE TYPE "PosShiftStatus" AS ENUM ('OPEN', 'CLOSED');
+  END IF;
+END $$;
 
 -- AlterTable
-ALTER TABLE "SalesInvoice" ADD COLUMN "terminalId" UUID,
-ADD COLUMN "shiftId" UUID;
+ALTER TABLE "SalesInvoice" ADD COLUMN IF NOT EXISTS "terminalId" UUID,
+ADD COLUMN IF NOT EXISTS "shiftId" UUID;
 
 -- AlterTable
-ALTER TABLE "Payment" ADD COLUMN "terminalId" UUID,
-ADD COLUMN "shiftId" UUID;
+ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "terminalId" UUID,
+ADD COLUMN IF NOT EXISTS "shiftId" UUID;
 
 -- CreateTable
-CREATE TABLE "PosTerminal" (
+CREATE TABLE IF NOT EXISTS "PosTerminal" (
     "id" UUID NOT NULL,
     "companyId" UUID NOT NULL,
     "branchId" UUID NOT NULL,
@@ -23,13 +31,13 @@ CREATE TABLE "PosTerminal" (
     "receiptPrinterType" "ReceiptPrinterType" NOT NULL DEFAULT 'THERMAL_80MM',
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "PosTerminal_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "PosShift" (
+CREATE TABLE IF NOT EXISTS "PosShift" (
     "id" UUID NOT NULL,
     "companyId" UUID NOT NULL,
     "branchId" UUID NOT NULL,
@@ -44,52 +52,96 @@ CREATE TABLE "PosShift" (
     "cashDifference" DECIMAL(19,4),
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "PosShift_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PosTerminal_companyId_code_key" ON "PosTerminal"("companyId", "code");
+CREATE UNIQUE INDEX IF NOT EXISTS "PosTerminal_companyId_code_key" ON "PosTerminal"("companyId", "code");
 
 -- CreateIndex
-CREATE INDEX "PosTerminal_companyId_branchId_isActive_idx" ON "PosTerminal"("companyId", "branchId", "isActive");
+CREATE INDEX IF NOT EXISTS "PosTerminal_companyId_branchId_isActive_idx" ON "PosTerminal"("companyId", "branchId", "isActive");
 
 -- CreateIndex
-CREATE INDEX "PosShift_companyId_terminalId_status_idx" ON "PosShift"("companyId", "terminalId", "status");
+CREATE INDEX IF NOT EXISTS "PosShift_companyId_terminalId_status_idx" ON "PosShift"("companyId", "terminalId", "status");
 
 -- CreateIndex
-CREATE INDEX "PosShift_companyId_cashierId_status_idx" ON "PosShift"("companyId", "cashierId", "status");
+CREATE INDEX IF NOT EXISTS "PosShift_companyId_cashierId_status_idx" ON "PosShift"("companyId", "cashierId", "status");
 
 -- AddForeignKey
-ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosTerminal_companyId_fkey') THEN
+    ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosTerminal_branchId_fkey') THEN
+    ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_defaultCashAccountId_fkey" FOREIGN KEY ("defaultCashAccountId") REFERENCES "Account"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosTerminal_defaultCashAccountId_fkey') THEN
+    ALTER TABLE "PosTerminal" ADD CONSTRAINT "PosTerminal_defaultCashAccountId_fkey" FOREIGN KEY ("defaultCashAccountId") REFERENCES "Account"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosShift_companyId_fkey') THEN
+    ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosShift_branchId_fkey') THEN
+    ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosShift_terminalId_fkey') THEN
+    ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_cashierId_fkey" FOREIGN KEY ("cashierId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PosShift_cashierId_fkey') THEN
+    ALTER TABLE "PosShift" ADD CONSTRAINT "PosShift_cashierId_fkey" FOREIGN KEY ("cashierId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "SalesInvoice" ADD CONSTRAINT "SalesInvoice_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SalesInvoice_terminalId_fkey') THEN
+    ALTER TABLE "SalesInvoice" ADD CONSTRAINT "SalesInvoice_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "SalesInvoice" ADD CONSTRAINT "SalesInvoice_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "PosShift"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SalesInvoice_shiftId_fkey') THEN
+    ALTER TABLE "SalesInvoice" ADD CONSTRAINT "SalesInvoice_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "PosShift"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Payment_terminalId_fkey') THEN
+    ALTER TABLE "Payment" ADD CONSTRAINT "Payment_terminalId_fkey" FOREIGN KEY ("terminalId") REFERENCES "PosTerminal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "PosShift"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Payment_shiftId_fkey') THEN
+    ALTER TABLE "Payment" ADD CONSTRAINT "Payment_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "PosShift"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
