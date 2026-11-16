@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { appendAudit } from "@/lib/audit";
-import { requirePermission } from "@/lib/auth";
+import { requireAuth, requirePermission } from "@/lib/auth";
 import { customerDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
@@ -11,7 +12,13 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
   try {
-    const context = await requirePermission("customer.manage");
+    const context = await requireAuth();
+    const hasPerm = context.roles.some((r) =>
+      r.permissions.some((p) => ["customer.manage", "sales.view", "SALES_INVOICE_CREATE", "SALES_INVOICE_POST"].includes(p))
+    );
+    if (!hasPerm) {
+      throw new ApiError(403, "FORBIDDEN", "You do not have permission to view customer details.");
+    }
     const { id } = await params;
     idSchema.parse(id);
 
@@ -27,7 +34,22 @@ export async function GET(_request: Request, { params }: Params) {
       throw new ApiError(404, "NOT_FOUND", "Customer not found.");
     }
 
-    return NextResponse.json(jsonSafe({ data: customer }));
+    const receivable = await prisma.account.findFirst({
+      where: { companyId: context.company.id, accountType: "ACCOUNTS_RECEIVABLE", isActive: true },
+      select: { id: true },
+    });
+    let outstanding = "0.0000";
+    if (receivable) {
+      const rows = await prisma.$queryRaw<Array<{ balance: Prisma.Decimal }>>(Prisma.sql`
+        SELECT COALESCE(SUM(l."baseDebit" - l."baseCredit"),0)::numeric(19,4) AS balance
+        FROM "JournalEntryLine" l JOIN "JournalEntry" j ON j."id" = l."entryId"
+        WHERE j."companyId" = ${context.company.id}::uuid AND j."status" = 'POSTED'
+          AND l."accountId" = ${receivable.id}::uuid AND l."customerId" = ${id}::uuid
+      `);
+      outstanding = (rows[0]?.balance || new Prisma.Decimal(0)).toFixed(4);
+    }
+
+    return NextResponse.json(jsonSafe({ data: { ...customer, outstanding } }));
   } catch (error) {
     return apiError(error);
   }
