@@ -172,7 +172,7 @@ export function PaymentRegister({
     );
     for (const doc of sorted) {
       if (remaining <= 0) break;
-      const docTotal = Number(doc.grandTotal) || 0;
+      const docTotal = Number(doc.outstandingAmount ?? doc.grandTotal) || 0;
       const alloc = Math.min(remaining, docTotal);
       if (alloc > 0) {
         newAlloc[doc.id] = alloc.toFixed(2);
@@ -191,7 +191,7 @@ export function PaymentRegister({
     let grandSum = 0;
     const newAlloc: Record<string, string> = {};
     targets.forEach((doc: any) => {
-      const val = Number(doc.grandTotal) || 0;
+      const val = Number(doc.outstandingAmount ?? doc.grandTotal) || 0;
       grandSum += val;
       newAlloc[doc.id] = val.toFixed(2);
     });
@@ -236,7 +236,7 @@ export function PaymentRegister({
 
             if (target && permissions.includes("PAYMENT_CREATE")) {
               const customerTarget = Boolean(initialInvoiceId);
-              const suggested = initialAmount || String(target.grandTotal);
+              const suggested = initialAmount || String(target.outstandingAmount ?? target.grandTotal);
               setDirection(customerTarget ? "CUSTOMER_RECEIPT" : "SUPPLIER_PAYMENT");
               setBranchId(target.branchId);
               setPartyId(customerTarget ? target.customerId : target.supplierId);
@@ -1776,7 +1776,8 @@ export function PaymentRegister({
                         {targets.map((item: any) => {
                           const docNum = item.invoiceNumber || item.receiptNumber;
                           const docDate = item.invoiceDate || item.receiptDate;
-                          const grandTotalStr = String(item.grandTotal);
+                          const dueAmount = item.outstandingAmount !== undefined ? item.outstandingAmount : item.grandTotal;
+                          const dueAmountStr = String(dueAmount);
                           const currentAlloc = docAllocations[item.id] || (targetId === item.id ? allocationAmount : "");
                           const isMatched = (parseFloat(currentAlloc) || 0) > 0;
 
@@ -1794,9 +1795,16 @@ export function PaymentRegister({
                                 <span className="text-[11px] text-slate-500">{formatDate(docDate)}</span>
                               </div>
                               <div className="flex items-center gap-3">
-                                <span className="font-mono font-bold text-slate-900">
-                                  {formatMoney(item.grandTotal, currency)}
-                                </span>
+                                <div className="text-right">
+                                  <span className="font-mono font-bold text-slate-900 block">
+                                    {formatMoney(dueAmount, currency)}
+                                  </span>
+                                  {Number(item.settledAmount) > 0 && (
+                                    <span className="text-[10px] text-slate-500 font-sans block">
+                                      Total {formatMoney(item.grandTotal, currency)} · Paid {formatMoney(item.settledAmount, currency)}
+                                    </span>
+                                  )}
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1806,10 +1814,10 @@ export function PaymentRegister({
                                         delete next[item.id];
                                         return next;
                                       });
-                                      if (amount === grandTotalStr) setAmount("");
+                                      if (amount === dueAmountStr) setAmount("");
                                     } else {
-                                      setDocAllocations({ [item.id]: grandTotalStr });
-                                      setAmount(grandTotalStr);
+                                      setDocAllocations({ [item.id]: dueAmountStr });
+                                      setAmount(dueAmountStr);
                                     }
                                   }}
                                   className={`rounded-lg px-2.5 py-1 text-xs font-bold transition shadow-xs ${

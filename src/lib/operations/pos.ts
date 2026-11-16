@@ -874,6 +874,8 @@ export async function executePosCheckout(
           settlementAccountId = bank.glAccountId;
         }
 
+        const paymentId = crypto.randomUUID();
+
         // Post Customer Receipt GL Journal Voucher (RC)
         const paymentJournal = await postOperationalJournal(tx, {
           actor,
@@ -885,7 +887,7 @@ export async function executePosCheckout(
           voucherSuffix: "RC",
           sourceModule: "PAYMENTS",
           sourceDocumentType: "Payment",
-          sourceDocumentId: `temp-${tIndex}`,
+          sourceDocumentId: paymentId,
           sourceDocumentNumber: paymentNumber,
           idempotencyKey: `POS-PMT:${invoice.id}:${tIndex}:${tender.paymentMethod}`,
           narration: `POS Counter Receipt ${paymentNumber} (${tender.paymentMethod}) for ${postedInvoice.invoiceNumber}`,
@@ -915,6 +917,7 @@ export async function executePosCheckout(
         // Create Payment record with POSTED status
         const payment = await tx.payment.create({
           data: {
+            id: paymentId,
             companyId: actor.companyId,
             branchId: input.branchId,
             customerId: customer.id,
@@ -945,12 +948,6 @@ export async function executePosCheckout(
             },
           },
           include: { allocations: true },
-        });
-
-        // Patch journal with real payment ID
-        await tx.journalEntry.update({
-          where: { id: paymentJournal.id },
-          data: { sourceDocumentId: payment.id },
         });
 
         createdPayments.push(payment);

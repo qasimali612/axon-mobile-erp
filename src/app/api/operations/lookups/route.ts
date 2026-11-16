@@ -37,9 +37,98 @@ export async function GET() {
       prisma.account.findMany({ where: { companyId: context.company.id, isActive: true, accountType: "CASH", ...(visibleBranchIds ? { OR: [{ branchId: null }, { branchId: { in: visibleBranchIds } }] } : {}) }, select: { id: true, branchId: true, code: true, name: true, currencyCode: true }, orderBy: { code: "asc" } }),
       prisma.companyMembership.findMany({ where: { companyId: context.company.id, status: "ACTIVE", user: { status: "ACTIVE" } }, select: { user: { select: { id: true, fullName: true } } }, orderBy: { user: { fullName: "asc" } } }),
       prisma.purchaseOrder.findMany({ where: { companyId: context.company.id, status: { in: ["APPROVED", "PARTIALLY_RECEIVED"] }, ...documentScopeWhere }, select: { id: true, branchId: true, warehouseId: true, supplierId: true, orderNumber: true, status: true, currencyCode: true, lines: { select: { id: true, productId: true, variantId: true, taxRuleId: true, description: true, orderedQuantity: true, receivedQuantity: true, unitCost: true, discountAmount: true, taxRate: true, taxAmount: true } } }, orderBy: { orderDate: "desc" }, take: 100 }),
-      prisma.salesInvoice.findMany({ where: { companyId: context.company.id, status: "POSTED", reversalOfId: null, ...documentScopeWhere }, select: { id: true, branchId: true, customerId: true, invoiceNumber: true, invoiceDate: true, grandTotal: true }, orderBy: { invoiceDate: "desc" }, take: 200 }),
-      prisma.purchaseReceipt.findMany({ where: { companyId: context.company.id, status: "POSTED", ...documentScopeWhere }, select: { id: true, branchId: true, supplierId: true, receiptNumber: true, receiptDate: true, grandTotal: true }, orderBy: { receiptDate: "desc" }, take: 200 }),
+      prisma.salesInvoice.findMany({
+        where: {
+          companyId: context.company.id,
+          status: "POSTED",
+          reversalOfId: null,
+          reversals: { none: { status: "POSTED" } },
+          ...documentScopeWhere,
+        },
+        select: {
+          id: true,
+          branchId: true,
+          customerId: true,
+          invoiceNumber: true,
+          invoiceDate: true,
+          grandTotal: true,
+          allocations: {
+            where: { payment: { status: "POSTED" } },
+            select: { amount: true, payment: { select: { direction: true } } },
+          },
+        },
+        orderBy: { invoiceDate: "desc" },
+        take: 300,
+      }),
+      prisma.purchaseReceipt.findMany({
+        where: {
+          companyId: context.company.id,
+          status: "POSTED",
+          reversalOfId: null,
+          reversals: { none: { status: "POSTED" } },
+          ...documentScopeWhere,
+        },
+        select: {
+          id: true,
+          branchId: true,
+          supplierId: true,
+          receiptNumber: true,
+          receiptDate: true,
+          grandTotal: true,
+          allocations: {
+            where: { payment: { status: "POSTED" } },
+            select: { amount: true, payment: { select: { direction: true } } },
+          },
+        },
+        orderBy: { receiptDate: "desc" },
+        take: 300,
+      }),
     ]);
+
+    const openSalesInvoices = salesInvoices
+      .map((inv) => {
+        const settled = (inv.allocations || []).reduce((sum, a) => {
+          if (a.payment?.direction === "CUSTOMER_RECEIPT") return sum + Number(a.amount);
+          if (a.payment?.direction === "CUSTOMER_REFUND") return sum - Number(a.amount);
+          return sum;
+        }, 0);
+        const grandTotal = Number(inv.grandTotal);
+        const outstanding = Math.max(0, Number((grandTotal - settled).toFixed(4)));
+        return {
+          id: inv.id,
+          branchId: inv.branchId,
+          customerId: inv.customerId,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          grandTotal: inv.grandTotal,
+          settledAmount: settled,
+          outstandingAmount: outstanding,
+        };
+      })
+      .filter((inv) => inv.outstandingAmount > 0.0001);
+
+    const openPurchaseReceipts = purchaseReceipts
+      .map((rec) => {
+        const settled = (rec.allocations || []).reduce((sum, a) => {
+          if (a.payment?.direction === "SUPPLIER_PAYMENT") return sum + Number(a.amount);
+          if (a.payment?.direction === "SUPPLIER_REFUND") return sum - Number(a.amount);
+          return sum;
+        }, 0);
+        const grandTotal = Number(rec.grandTotal);
+        const outstanding = Math.max(0, Number((grandTotal - settled).toFixed(4)));
+        return {
+          id: rec.id,
+          branchId: rec.branchId,
+          supplierId: rec.supplierId,
+          receiptNumber: rec.receiptNumber,
+          receiptDate: rec.receiptDate,
+          grandTotal: rec.grandTotal,
+          settledAmount: settled,
+          outstandingAmount: outstanding,
+        };
+      })
+      .filter((rec) => rec.outstandingAmount > 0.0001);
+
     return NextResponse.json(jsonSafe({
       data: {
         branches,
@@ -52,8 +141,8 @@ export async function GET() {
         cashAccounts,
         users: users.map((membership) => membership.user),
         purchaseOrders,
-        salesInvoices,
-        purchaseReceipts,
+        salesInvoices: openSalesInvoices,
+        purchaseReceipts: openPurchaseReceipts,
       },
     }));
   } catch (error) { return apiError(error); }
