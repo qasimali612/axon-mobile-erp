@@ -585,12 +585,12 @@ export function SalesManager({
                             View
                           </Link>
 
-                          {/* Edit Action (for draft documents) */}
-                          {row.status === "DRAFT" && can("SALES_INVOICE_CREATE") && (
+                          {/* Edit Action (for unposted documents: DRAFT, SUBMITTED, APPROVED) */}
+                          {["DRAFT", "SUBMITTED", "APPROVED"].includes(row.status) && can("SALES_INVOICE_CREATE") && (
                             <Link
                               href={`/sales/${row.id}/edit`}
                               className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition"
-                              title="Edit sales invoice draft"
+                              title="Edit sales invoice"
                             >
                               <Edit3 className="h-3 w-3" />
                               Edit

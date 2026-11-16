@@ -72,6 +72,7 @@ export type PosCheckoutInput = {
   tenders: PosTenderInput[];
   isCreditSale?: boolean;
   creditOverrideReason?: string | null;
+  existingInvoiceId?: string | null;
 };
 
 export type PosShiftOpenInput = {
@@ -117,7 +118,7 @@ export async function executePosCheckout(
 
   return prisma.$transaction(
     async (tx) => {
-      // 1. Idempotency Check: Return existing sale if already processed
+      // 1. Idempotency Check: Return existing sale if already processed and posted
       const existing = await tx.salesInvoice.findUnique({
         where: {
           companyId_idempotencyKey: {
@@ -144,11 +145,34 @@ export async function executePosCheckout(
           customer: true,
         },
       });
-      if (existing) {
+      if (existing && existing.status === OperationalDocumentStatus.POSTED) {
         return {
           invoice: existing,
           isDuplicate: true,
+          payments: existing.allocations.map((a) => a.payment),
+          remainingCreditBalance: moneyString(
+            existing.grandTotal.minus(existing.allocations.reduce((sum, a) => sum.plus(a.amount), zero())),
+          ),
         };
+      }
+
+      // Check if editing/checking out an existing draft or unposted document
+      const targetExistingId = input.existingInvoiceId || (existing && existing.status !== OperationalDocumentStatus.POSTED ? existing.id : null);
+      const existingInvoice = targetExistingId
+        ? await tx.salesInvoice.findFirst({
+            where: { id: targetExistingId, companyId: actor.companyId },
+            include: { lines: { select: { id: true } } },
+          })
+        : null;
+
+      if (existingInvoice) {
+        if (
+          existingInvoice.status === OperationalDocumentStatus.POSTED ||
+          existingInvoice.status === OperationalDocumentStatus.REVERSED ||
+          existingInvoice.status === OperationalDocumentStatus.CANCELLED
+        ) {
+          throw new ApiError(409, "INVALID_DOCUMENT_STATE", "This sales invoice is already posted or closed.");
+        }
       }
 
       // 2. Validate Branch, Warehouse, Customer & Salesperson
@@ -540,63 +564,121 @@ export async function executePosCheckout(
       }
       totalCost = totalCost.toDecimalPlaces(4);
 
-      // 10. Allocate Sequential Invoice Number
-      const { number: invoiceNumber } = await allocateOperationalNumber(tx, {
-        companyId: actor.companyId,
-        branchId: input.branchId,
-        postingDate: invoiceDate,
-        documentType: "SALES_INVOICE",
-        suffix: "SI",
-      });
+      // 10. Sequential Invoice Number & Document Preparation
+      const invoiceNumber = existingInvoice
+        ? existingInvoice.invoiceNumber
+        : (
+            await allocateOperationalNumber(tx, {
+              companyId: actor.companyId,
+              branchId: input.branchId,
+              postingDate: invoiceDate,
+              documentType: "SALES_INVOICE",
+              suffix: "SI",
+            })
+          ).number;
 
-      // 11. Create SalesInvoice in DRAFT initially (so lines are linked)
-      const invoice = await tx.salesInvoice.create({
-        data: {
-          companyId: actor.companyId,
-          branchId: input.branchId,
-          warehouseId: input.warehouseId,
-          customerId: customer.id,
-          salespersonId,
-          priceListId: priceList?.id || null,
-          terminalId: input.terminalId || null,
-          shiftId: input.shiftId || null,
-          invoiceNumber,
-          invoiceDate,
-          dueDate: remainingCreditBalance.gt(0) ? (dueDate || invoiceDate) : null,
-          currencyCode: input.currencyCode,
-          subtotal,
-          discountTotal,
-          taxTotal,
-          grandTotal,
-          costTotal: totalCost,
-          idempotencyKey: input.idempotencyKey,
-          notes: input.notes || "POS Counter Sale",
-          preparedById: actor.userId,
-          status: OperationalDocumentStatus.DRAFT,
-          lines: {
-            create: preparedLines.map((line) => ({
-              productId: line.productId,
-              variantId: line.variantId,
-              taxRuleId: line.taxRuleId,
-              taxRate: line.taxRate,
-              lineNumber: line.lineNumber,
-              description: line.description,
-              quantity: line.quantity,
-              unitPrice: line.unitPrice,
-              discountAmount: line.discountAmount,
-              taxAmount: line.taxAmount,
-              lineTotal: line.lineTotal,
-              costTotal: lineCostMap.get(line.lineNumber)!.total,
-              units: {
-                create: line.stockUnitIds.map((stockUnitId) => ({ stockUnitId })),
-              },
-            })),
+      // 11. Create or Update SalesInvoice in DRAFT initially (so lines are linked)
+      let invoice;
+      if (existingInvoice) {
+        const oldLineIds = existingInvoice.lines.map((l) => l.id);
+        if (oldLineIds.length > 0) {
+          await tx.salesInvoiceUnit.deleteMany({ where: { invoiceLineId: { in: oldLineIds } } });
+          await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: existingInvoice.id } });
+        }
+        invoice = await tx.salesInvoice.update({
+          where: { id: existingInvoice.id },
+          data: {
+            branchId: input.branchId,
+            warehouseId: input.warehouseId,
+            customerId: customer.id,
+            salespersonId,
+            priceListId: priceList?.id || null,
+            terminalId: input.terminalId || null,
+            shiftId: input.shiftId || null,
+            invoiceDate,
+            dueDate: remainingCreditBalance.gt(0) ? (dueDate || invoiceDate) : null,
+            currencyCode: input.currencyCode,
+            subtotal,
+            discountTotal,
+            taxTotal,
+            grandTotal,
+            costTotal: totalCost,
+            idempotencyKey: input.idempotencyKey,
+            notes: input.notes || "POS Counter Sale",
+            status: OperationalDocumentStatus.DRAFT,
+            lines: {
+              create: preparedLines.map((line) => ({
+                productId: line.productId,
+                variantId: line.variantId,
+                taxRuleId: line.taxRuleId,
+                taxRate: line.taxRate,
+                lineNumber: line.lineNumber,
+                description: line.description,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                discountAmount: line.discountAmount,
+                taxAmount: line.taxAmount,
+                lineTotal: line.lineTotal,
+                costTotal: lineCostMap.get(line.lineNumber)!.total,
+                units: {
+                  create: line.stockUnitIds.map((stockUnitId) => ({ stockUnitId })),
+                },
+              })),
+            },
           },
-        },
-        include: {
-          lines: { include: { units: true }, orderBy: { lineNumber: "asc" } },
-        },
-      });
+          include: {
+            lines: { include: { units: true }, orderBy: { lineNumber: "asc" } },
+          },
+        });
+      } else {
+        invoice = await tx.salesInvoice.create({
+          data: {
+            companyId: actor.companyId,
+            branchId: input.branchId,
+            warehouseId: input.warehouseId,
+            customerId: customer.id,
+            salespersonId,
+            priceListId: priceList?.id || null,
+            terminalId: input.terminalId || null,
+            shiftId: input.shiftId || null,
+            invoiceNumber,
+            invoiceDate,
+            dueDate: remainingCreditBalance.gt(0) ? (dueDate || invoiceDate) : null,
+            currencyCode: input.currencyCode,
+            subtotal,
+            discountTotal,
+            taxTotal,
+            grandTotal,
+            costTotal: totalCost,
+            idempotencyKey: input.idempotencyKey,
+            notes: input.notes || "POS Counter Sale",
+            preparedById: actor.userId,
+            status: OperationalDocumentStatus.DRAFT,
+            lines: {
+              create: preparedLines.map((line) => ({
+                productId: line.productId,
+                variantId: line.variantId,
+                taxRuleId: line.taxRuleId,
+                taxRate: line.taxRate,
+                lineNumber: line.lineNumber,
+                description: line.description,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                discountAmount: line.discountAmount,
+                taxAmount: line.taxAmount,
+                lineTotal: line.lineTotal,
+                costTotal: lineCostMap.get(line.lineNumber)!.total,
+                units: {
+                  create: line.stockUnitIds.map((stockUnitId) => ({ stockUnitId })),
+                },
+              })),
+            },
+          },
+          include: {
+            lines: { include: { units: true }, orderBy: { lineNumber: "asc" } },
+          },
+        });
+      }
 
       // 12. Post Balanced Sales & COGS Journal Entry (SV)
       const [receivableAccount, revenueAccount, cogsAccount, inventoryAccount] = await Promise.all([
@@ -897,17 +979,38 @@ export async function executePosCheckout(
         },
       }, tx);
 
+      const completePostedInvoice = await tx.salesInvoice.findUniqueOrThrow({
+        where: { id: invoice.id },
+        include: {
+          lines: {
+            include: {
+              units: { include: { stockUnit: { include: { identifiers: true } } } },
+              product: true,
+              variant: true,
+            },
+            orderBy: { lineNumber: "asc" },
+          },
+          allocations: {
+            include: {
+              payment: {
+                include: { cashAccount: true, bankAccount: true },
+              },
+            },
+          },
+          customer: true,
+        },
+      });
+
       return {
-        invoice: postedInvoice,
+        invoice: completePostedInvoice,
         payments: createdPayments,
         remainingCreditBalance: moneyString(remainingCreditBalance),
         isDuplicate: false,
       };
     },
     {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      maxWait: 15_000,
-      timeout: 45_000,
+      maxWait: 20_000,
+      timeout: 60_000,
     },
   );
 }

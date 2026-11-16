@@ -105,8 +105,8 @@ export function SalesInvoiceWorkflowActions({ invoice, permissions }: Props) {
           </Button>
         )}
 
-        {/* Cancel draft action */}
-        {invoice.status === "DRAFT" && (
+        {/* Cancel unposted document action */}
+        {["DRAFT", "SUBMITTED", "APPROVED"].includes(invoice.status) && (
           <Button
             type="button"
             disabled={acting}

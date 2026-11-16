@@ -625,7 +625,7 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
       dueDate: isCreditSale ? (dueDate || invoiceDate) : null,
       currencyCode: currency,
       notes: notes.trim() || undefined,
-      idempotencyKey: sourceIdempotencyKey || `pos-${crypto.randomUUID()}`,
+      idempotencyKey: `pos-checkout-${invoiceId || crypto.randomUUID()}-${Date.now()}`,
       lines: cart.map((line) => ({
         productId: line.product.id,
         variantId: line.variant.id,
@@ -640,6 +640,7 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
       tenders: tendersPayload,
       isCreditSale,
       creditOverrideReason: overrideReason || undefined,
+      existingInvoiceId: invoiceId || null,
     };
 
     try {
@@ -715,8 +716,8 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
           stockUnitIds: line.stockUnitIds,
         })),
       };
-      const response = await fetch("/api/sales/invoices", {
-        method: "POST",
+      const response = await fetch(invoiceId ? `/api/sales/invoices/${invoiceId}` : "/api/sales/invoices", {
+        method: invoiceId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -725,7 +726,7 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
       setCart([]);
       setNotice({
         kind: "success",
-        text: `Sale draft ${payload.data.invoiceNumber} successfully parked. Recall it anytime using Parked Sales.`,
+        text: `Sale draft ${payload.data.invoiceNumber} successfully ${invoiceId ? "updated" : "parked"}. Recall it anytime using Parked Sales.`,
       });
     } catch (error) {
       setNotice({ kind: "error", text: error instanceof Error ? error.message : "Failed to park sale." });
@@ -1549,6 +1550,30 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                     )}
                   </div>
 
+                  {/* Customer Prior Advance Credit Notice & Quick Apply */}
+                  {customerDetails?.outstanding && Number(customerDetails.outstanding) < 0 && (
+                    <div className="mb-2.5 flex items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs">
+                      <div>
+                        <span className="font-bold text-emerald-900">Advance on Account:</span>
+                        <span className="ml-1.5 font-mono font-bold text-emerald-700">
+                          {money(Math.abs(Number(customerDetails.outstanding)), currency)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={Boolean(invoice)}
+                        onClick={() => {
+                          const avail = Math.abs(Number(customerDetails.outstanding));
+                          const needed = totals.grand;
+                          setAdvanceAmount(String(Math.min(avail, needed)));
+                        }}
+                        className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-700 shadow-2xs"
+                      >
+                        Apply Advance
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-1.5 mb-2.5">
                     <button
                       type="button"
@@ -1567,6 +1592,57 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                       <Landmark className="h-3.5 w-3.5" /> Bank Deposit
                     </button>
                   </div>
+
+                  {advanceMethod === "BANK" && (
+                    <div className="mb-2.5 space-y-1.5">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                          Bank Settlement Account
+                        </label>
+                        <select
+                          value={bankAccountId}
+                          disabled={Boolean(invoice)}
+                          onChange={(e) => setBankAccountId(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-mono text-slate-900 focus:outline-none"
+                        >
+                          {(lookups?.banks || []).map((b) => (
+                            <option key={b.id} value={b.id}>🏦 {b.code} · {b.bankName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                          Cheque # / Online Ref
+                        </label>
+                        <input
+                          type="text"
+                          value={advanceReference}
+                          disabled={Boolean(invoice)}
+                          onChange={(e) => setAdvanceReference(e.target.value)}
+                          placeholder="e.g. CHQ-99120 or Transfer Reference"
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-900 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {advanceMethod === "CASH" && (
+                    <div className="mb-2">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                        Cash Drawer Account
+                      </label>
+                      <select
+                        value={cashAccountId}
+                        disabled={Boolean(invoice)}
+                        onChange={(e) => setCashAccountId(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-mono text-slate-900 focus:outline-none"
+                      >
+                        {(lookups?.cashAccounts || []).map((acc) => (
+                          <option key={acc.id} value={acc.id}>💵 {acc.code} · {acc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <input
                     type="number"
@@ -1716,6 +1792,32 @@ export function PosWorkspace({ currency, userId, permissions = [], invoiceId }: 
                     <span className="text-2xl font-black text-blue-300">{money(totals.grand, currency)}</span>
                   </div>
                 </div>
+                {saleType === "credit" && advanceNum > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-white/10">
+                    <div className="flex justify-between text-emerald-400 font-bold text-xs">
+                      <span>Advance Received</span>
+                      <b className="font-mono">− {money(advanceNum, currency)}</b>
+                    </div>
+                    <div className="flex justify-between text-amber-300 font-bold text-sm">
+                      <span>Remaining AR Due</span>
+                      <b className="font-mono">{money(remainingCreditDue, currency)}</b>
+                    </div>
+                  </div>
+                )}
+                {saleType === "split" && splitTendersSum > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-white/10">
+                    <div className="flex justify-between text-indigo-300 font-bold text-xs">
+                      <span>Total Tendered</span>
+                      <b className="font-mono">− {money(splitTendersSum, currency)}</b>
+                    </div>
+                    {splitRemainingDue > 0 && (
+                      <div className="flex justify-between text-amber-300 font-bold text-sm">
+                        <span>Balance on Terms</span>
+                        <b className="font-mono">{money(splitRemainingDue, currency)}</b>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
