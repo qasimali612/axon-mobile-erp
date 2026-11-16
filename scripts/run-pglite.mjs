@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 const dbDir = path.resolve("./.pglite/axon-erp");
-const port = parseInt(process.env.DB_PORT || process.argv[2] || "54332", 10);
+const port = parseInt(process.env.DB_PORT || process.argv[2] || "54329", 10);
 
 const dirs = [
   "pg_notify", "pg_replslot", "pg_serial", "pg_snapshots", "pg_stat", "pg_stat_tmp", "pg_tblspc", "pg_twophase",
