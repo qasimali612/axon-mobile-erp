@@ -140,16 +140,34 @@ export function PaymentRegister({
   const [batchPosting, setBatchPosting] = useState(false);
   const prefillApplied = useRef(false);
 
+  // Reversal dialog state
+  const [reversalTarget, setReversalTarget] = useState<{
+    id: string;
+    paymentNumber: string;
+    amount?: string | number;
+    partyName?: string;
+    andRedraft?: boolean;
+  } | null>(null);
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversing, setReversing] = useState(false);
+
   const can = (key: string) => permissions.includes(key);
   const isCustomer = direction.startsWith("CUSTOMER");
 
   const totalAllocated = useMemo(() => {
-    return Object.values(docAllocations).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-  }, [docAllocations]);
+    const multi = Object.values(docAllocations).reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+    if (multi > 0) return multi;
+    return targetId && allocationAmount ? (parseFloat(allocationAmount) || 0) : 0;
+  }, [docAllocations, targetId, allocationAmount]);
 
   const advanceOnLedger = useMemo(() => {
     const amt = parseFloat(amount) || 0;
     return Math.max(0, amt - totalAllocated);
+  }, [amount, totalAllocated]);
+
+  const isOverAllocated = useMemo(() => {
+    const amt = parseFloat(amount) || 0;
+    return totalAllocated > amt + 0.0001;
   }, [amount, totalAllocated]);
 
   const tenderedNum = parseFloat(cashTendered) || 0;
@@ -207,6 +225,127 @@ export function PaymentRegister({
     toast.info("Allocations cleared. Entire amount will post as an on-account advance.");
   }
 
+  function handleCapAllocationsToPayment() {
+    const totalEntered = parseFloat(amount) || 0;
+    if (totalEntered <= 0) {
+      setDocAllocations({});
+      return;
+    }
+    let remaining = totalEntered;
+    const newAlloc: Record<string, string> = {};
+    for (const [id, val] of Object.entries(docAllocations)) {
+      if (remaining <= 0) break;
+      const num = parseFloat(val) || 0;
+      const alloc = Math.min(remaining, num);
+      if (alloc > 0) {
+        newAlloc[id] = alloc.toFixed(2);
+        remaining -= alloc;
+      }
+    }
+    setDocAllocations(newAlloc);
+    toast.info(`Allocations capped to match payment amount (${formatMoney(totalEntered, currency)})`);
+  }
+
+  function handleMatchPaymentToAllocations() {
+    if (totalAllocated > 0) {
+      setAmount(totalAllocated.toFixed(2));
+      toast.info(`Payment amount adjusted to match allocated total (${formatMoney(totalAllocated, currency)})`);
+    }
+  }
+
+  function startReversePayment(
+    payment: { id: string; paymentNumber: string; amount?: string | number; customer?: any; supplier?: any },
+    andRedraft = false
+  ) {
+    const partyName = payment.customer?.name || payment.supplier?.name || "";
+    setReversalTarget({
+      id: payment.id,
+      paymentNumber: payment.paymentNumber,
+      amount: payment.amount,
+      partyName,
+      andRedraft,
+    });
+    setReversalReason(andRedraft ? "Voucher correction & redraft" : "Reversal of posted payment voucher");
+  }
+
+  async function submitReversal() {
+    if (!reversalTarget) return;
+    if (!reversalReason.trim() || reversalReason.trim().length < 5) {
+      return toast.error("Please enter a reversal reason with at least 5 characters.");
+    }
+    setReversing(true);
+    try {
+      let originalData: any = null;
+      if (reversalTarget.andRedraft) {
+        const fetchRes = await fetch(`/api/payments/${reversalTarget.id}`);
+        const fetchBody = await fetchRes.json().catch(() => null);
+        if (fetchRes.ok && fetchBody?.data) {
+          originalData = fetchBody.data;
+        }
+      }
+
+      const res = await fetch(`/api/payments/${reversalTarget.id}/reverse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reversalReason.trim() }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.error?.message || "Failed to reverse payment voucher.");
+      }
+
+      toast.success(
+        `Voucher ${reversalTarget.paymentNumber} reversed successfully! A mirror reversing journal entry was posted to the General Ledger.`
+      );
+
+      const wasRedraft = reversalTarget.andRedraft;
+      setReversalTarget(null);
+      setReversalReason("");
+
+      if (wasRedraft && originalData) {
+        setEditingPaymentId(null);
+        setEditingPaymentNumber(null);
+        setDirection(originalData.direction);
+        if (originalData.branchId) setBranchId(originalData.branchId);
+        const pId = originalData.customerId || originalData.supplierId || "";
+        setPartyId(pId);
+        setPartySearch(originalData.customer?.name || originalData.supplier?.name || "");
+        setAmount(String(originalData.amount ?? ""));
+        setDate(new Date().toISOString().slice(0, 10));
+        if (originalData.bankAccountId) {
+          setAccountChoice(`bank:${originalData.bankAccountId}`);
+          setSettlementFilter("BANK");
+        } else if (originalData.cashAccountId) {
+          setAccountChoice(`cash:${originalData.cashAccountId}`);
+          setSettlementFilter("CASH");
+        }
+        setReference(`Correction for ${originalData.paymentNumber}`);
+        setNotes(originalData.notes || "");
+        if (Array.isArray(originalData.allocations) && originalData.allocations.length > 0) {
+          const newAlloc: Record<string, string> = {};
+          originalData.allocations.forEach((alloc: any) => {
+            const docId = alloc.salesInvoiceId || alloc.purchaseReceiptId;
+            if (docId) newAlloc[docId] = String(Number(alloc.amount) || "");
+          });
+          setDocAllocations(newAlloc);
+        } else {
+          setDocAllocations({});
+        }
+        setOpen(true);
+        toast.info(`Redrafting voucher based on ${originalData.paymentNumber}. You can now adjust allocations and repost.`);
+      }
+
+      if (selectedPayment?.id === reversalTarget.id) {
+        setSelectedPayment(null);
+      }
+      void load();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reverse payment voucher.");
+    } finally {
+      setReversing(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -243,6 +382,7 @@ export function PaymentRegister({
               setTargetId(target.id);
               setAmount(suggested);
               setAllocationAmount(suggested);
+              setDocAllocations({ [target.id]: suggested });
               setReference(`Settlement for ${target.invoiceNumber || target.receiptNumber}`);
               setOpen(true);
             } else if (!target) {
@@ -552,18 +692,31 @@ export function PaymentRegister({
         amount: String(parseFloat(val)),
       }));
 
-    const finalAllocations =
-      multiAllocations.length > 0
-        ? multiAllocations
-        : targetId && allocationAmount
-        ? [
-            {
-              salesInvoiceId: isCustomer ? targetId : null,
-              purchaseReceiptId: isCustomer ? null : targetId,
-              amount: allocationAmount,
-            },
-          ]
-        : [];
+    const cleanAmount = String(amount).replace(/,/g, "").trim();
+    const cleanAmountNum = parseFloat(cleanAmount) || 0;
+
+    let finalAllocations = multiAllocations;
+    if (finalAllocations.length === 0 && targetId && allocationAmount) {
+      const singleAmt = Math.min(parseFloat(allocationAmount) || 0, cleanAmountNum);
+      if (singleAmt > 0) {
+        finalAllocations = [
+          {
+            salesInvoiceId: isCustomer ? targetId : null,
+            purchaseReceiptId: isCustomer ? null : targetId,
+            amount: singleAmt.toFixed(2),
+          },
+        ];
+      }
+    }
+
+    const totalAlloc = finalAllocations.reduce((sum, a) => sum + (parseFloat(a.amount) || 0), 0);
+    if (totalAlloc > cleanAmountNum + 0.0001) {
+      setSaving(false);
+      setIsPostingDirect(false);
+      return toast.error(
+        `Payment allocations (${formatMoney(totalAlloc, currency)}) exceed payment amount (${formatMoney(cleanAmountNum, currency)}). Please adjust document allocations or click 'Match Payment to Allocations'.`
+      );
+    }
 
     const effectiveReference =
       reference ||
@@ -582,7 +735,6 @@ export function PaymentRegister({
       .join(" · ") || null;
 
     try {
-      const cleanAmount = String(amount).replace(/,/g, "").trim();
       const payload = {
         branchId,
         customerId: isCustomer ? partyId : null,
@@ -1134,6 +1286,32 @@ export function PaymentRegister({
                             Delete
                           </Button>
                         )}
+
+                        {/* Reverse / Re-Draft Posted Payment Voucher */}
+                        {row.status === "POSTED" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => startReversePayment(row, false)}
+                              className="px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-50 hover:border-amber-300 gap-1 h-8 text-xs font-semibold"
+                              title="Reverse posted payment voucher (creates reversing double-entry journal)"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 text-amber-600" />
+                              Reverse
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => startReversePayment(row, true)}
+                              className="px-2 text-blue-700 hover:text-blue-800 hover:bg-blue-50 hover:border-blue-300 gap-1 h-8 text-xs font-semibold"
+                              title="Reverse posted voucher and immediately open draft to correct & repost"
+                            >
+                              <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+                              Reverse & Edit
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1172,6 +1350,11 @@ export function PaymentRegister({
           </div>
         </div>
       </section>
+
+      {/* Page Footer */}
+      <footer className="mt-6 border-t border-slate-200 pt-4 pb-2 text-center text-xs text-slate-400">
+        © 2026 Copyright Reserved · Qasim Ali · 0315-5049489
+      </footer>
 
       {/* VIEW PAYMENT DETAIL MODAL */}
       {selectedPayment || detailLoading ? (
@@ -1416,6 +1599,34 @@ export function PaymentRegister({
                           <Trash2 className="h-3.5 w-3.5" />
                         )}
                         Delete Voucher
+                      </Button>
+                    </>
+                  )}
+                  {selectedPayment.status === "POSTED" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const p = selectedPayment;
+                          startReversePayment(p, false);
+                        }}
+                        className="gap-1.5 text-amber-700 border-amber-200 hover:bg-amber-50"
+                        title="Reverse posted voucher in the General Ledger"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 text-amber-600" />
+                        Reverse Voucher
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const p = selectedPayment;
+                          startReversePayment(p, true);
+                        }}
+                        className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50"
+                        title="Reverse posted voucher and re-open draft to edit and repost"
+                      >
+                        <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+                        Reverse & Re-Draft
                       </Button>
                     </>
                   )}
@@ -1764,70 +1975,225 @@ export function PaymentRegister({
 
                   {/* Open Invoices Settlement */}
                   {targets.length > 0 ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
-                      <div className="flex items-center justify-between mb-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
                         <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                           <FileText className="h-4 w-4 text-blue-600" />
                           Unpaid {isCustomer ? "Invoices" : "Bills"} ({targets.length})
                         </span>
-                        <span className="text-[11px] text-slate-500">Click &apos;Settle Full&apos; to auto-fill amount</span>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <button
+                            type="button"
+                            onClick={handleAutoAllocateFIFO}
+                            className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                            title="Auto-allocate payment amount to oldest documents first"
+                          >
+                            <Zap className="h-3 w-3" /> Auto FIFO
+                          </button>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={handleMatchAllDocs}
+                            className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-800 hover:underline"
+                            title="Match and allocate all open documents"
+                          >
+                            Match All
+                          </button>
+                          {totalAllocated > 0 && (
+                            <>
+                              <span className="text-slate-300">|</span>
+                              <button
+                                type="button"
+                                onClick={handleClearAllocations}
+                                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline"
+                              >
+                                Clear
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+
+                      {/* Live Allocation Breakdown Tracker */}
+                      <div className="rounded-lg border border-slate-200 bg-white p-2.5 text-xs grid grid-cols-3 gap-2">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment Amount</span>
+                          <span className="font-mono font-bold text-slate-900">
+                            {formatMoney(amount || 0, currency)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Allocated to Docs</span>
+                          <span className={`font-mono font-bold ${isOverAllocated ? "text-rose-600" : "text-emerald-600"}`}>
+                            {formatMoney(totalAllocated, currency)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Advance on Ledger</span>
+                          <span className="font-mono font-bold text-blue-600">
+                            {formatMoney(advanceOnLedger, currency)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Over-allocation warning and 1-click fixes */}
+                      {isOverAllocated && (
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-900 space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                            <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                            Allocations ({formatMoney(totalAllocated, currency)}) exceed payment amount ({formatMoney(amount || 0, currency)}) by {formatMoney(totalAllocated - (parseFloat(amount) || 0), currency)}!
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleMatchPaymentToAllocations}
+                              className="rounded-md bg-rose-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-rose-700 shadow-xs"
+                            >
+                              ⚡ Match Payment to Allocations ({formatMoney(totalAllocated, currency)})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCapAllocationsToPayment}
+                              className="rounded-md border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                            >
+                              Cap Allocations to Payment
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* List of documents with partial allocation inputs */}
+                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                         {targets.map((item: any) => {
                           const docNum = item.invoiceNumber || item.receiptNumber;
                           const docDate = item.invoiceDate || item.receiptDate;
-                          const dueAmount = item.outstandingAmount !== undefined ? item.outstandingAmount : item.grandTotal;
-                          const dueAmountStr = String(dueAmount);
-                          const currentAlloc = docAllocations[item.id] || (targetId === item.id ? allocationAmount : "");
-                          const isMatched = (parseFloat(currentAlloc) || 0) > 0;
+                          const dueAmount = item.outstandingAmount !== undefined ? Number(item.outstandingAmount) : Number(item.grandTotal);
+                          const currentAllocStr = docAllocations[item.id] || "";
+                          const currentAllocNum = parseFloat(currentAllocStr) || 0;
+                          const isFullyAllocated = currentAllocNum >= dueAmount - 0.001;
+                          const isPartiallyAllocated = currentAllocNum > 0 && !isFullyAllocated;
+
+                          // calculate unallocated payment available
+                          const currentPaymentAmt = parseFloat(amount) || 0;
+                          const otherAllocated = totalAllocated - currentAllocNum;
+                          const unallocatedPayment = Math.max(0, currentPaymentAmt - otherAllocated);
 
                           return (
                             <div
                               key={item.id}
-                              className={`flex items-center justify-between rounded-xl border p-2.5 transition text-xs ${
-                                isMatched
-                                  ? "border-emerald-300 bg-emerald-50/80"
-                                  : "border-slate-200 bg-white hover:bg-slate-50"
+                              className={`rounded-xl border p-3 transition text-xs ${
+                                isFullyAllocated
+                                  ? "border-emerald-300 bg-emerald-50/70"
+                                  : isPartiallyAllocated
+                                  ? "border-blue-300 bg-blue-50/70"
+                                  : "border-slate-200 bg-white hover:bg-slate-50/50"
                               }`}
                             >
-                              <div>
-                                <span className="font-bold text-slate-900 block font-sans">{docNum}</span>
-                                <span className="text-[11px] text-slate-500">{formatDate(docDate)}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <div>
+                                  <span className="font-bold text-slate-900 block font-sans text-xs">{docNum}</span>
+                                  <span className="text-[11px] text-slate-500">{formatDate(docDate)}</span>
+                                </div>
                                 <div className="text-right">
-                                  <span className="font-mono font-bold text-slate-900 block">
-                                    {formatMoney(dueAmount, currency)}
+                                  <span className="font-mono font-bold text-slate-900 block text-xs">
+                                    Due: {formatMoney(dueAmount, currency)}
                                   </span>
                                   {Number(item.settledAmount) > 0 && (
-                                    <span className="text-[10px] text-slate-500 font-sans block">
+                                    <span className="text-[10px] text-slate-500 block">
                                       Total {formatMoney(item.grandTotal, currency)} · Paid {formatMoney(item.settledAmount, currency)}
                                     </span>
                                   )}
                                 </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                                <div className="flex-1 relative">
+                                  <span className="pointer-events-none absolute left-2.5 top-2 text-[10px] font-bold text-slate-400">
+                                    {currency}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max={dueAmount}
+                                    placeholder="0.00 (Partial)"
+                                    value={currentAllocStr}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setDocAllocations((prev) => {
+                                        const next = { ...prev };
+                                        if (!val || parseFloat(val) <= 0) {
+                                          delete next[item.id];
+                                        } else {
+                                          next[item.id] = val;
+                                        }
+                                        return next;
+                                      });
+                                      if ((!amount || parseFloat(amount) === 0) && parseFloat(val) > 0) {
+                                        setAmount(val);
+                                      }
+                                    }}
+                                    className="h-8 w-full rounded-lg border border-slate-300 pl-11 pr-2.5 text-xs font-mono font-bold text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 bg-white"
+                                  />
+                                </div>
+
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (isMatched) {
+                                    if (isFullyAllocated) {
                                       setDocAllocations((prev) => {
                                         const next = { ...prev };
                                         delete next[item.id];
                                         return next;
                                       });
-                                      if (amount === dueAmountStr) setAmount("");
                                     } else {
-                                      setDocAllocations({ [item.id]: dueAmountStr });
-                                      setAmount(dueAmountStr);
+                                      const dueStr = dueAmount.toFixed(2);
+                                      setDocAllocations((prev) => ({ ...prev, [item.id]: dueStr }));
+                                      if (!amount || parseFloat(amount) < dueAmount) {
+                                        setAmount(dueStr);
+                                      }
                                     }
                                   }}
-                                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition shadow-xs ${
-                                    isMatched
+                                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition shadow-2xs whitespace-nowrap ${
+                                    isFullyAllocated
                                       ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                                      : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                      : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                                   }`}
+                                  title="Allocate entire outstanding balance for this document"
                                 >
-                                  {isMatched ? "✓ Settled" : "⚡ Settle Full"}
+                                  {isFullyAllocated ? "✓ Full" : "⚡ Settle Full"}
                                 </button>
+
+                                {unallocatedPayment > 0 && !isFullyAllocated && unallocatedPayment < dueAmount && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const partialAmt = Math.min(dueAmount, unallocatedPayment).toFixed(2);
+                                      setDocAllocations((prev) => ({ ...prev, [item.id]: partialAmt }));
+                                    }}
+                                    className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 whitespace-nowrap"
+                                    title={`Allocate available unallocated payment amount (${formatMoney(unallocatedPayment, currency)})`}
+                                  >
+                                    + Remainder ({formatMoney(unallocatedPayment, currency)})
+                                  </button>
+                                )}
+
+                                {currentAllocNum > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDocAllocations((prev) => {
+                                        const next = { ...prev };
+                                        delete next[item.id];
+                                        return next;
+                                      });
+                                    }}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                    title="Clear allocation for this document"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -1909,6 +2275,119 @@ export function PaymentRegister({
           </div>
         </div>
       ) : null}
+
+      {/* REVERSAL CONFIRMATION MODAL */}
+      {reversalTarget && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-amber-50/50">
+              <div className="flex items-center gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-amber-700">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-950 text-base">
+                    Reverse Payment Voucher: {reversalTarget.paymentNumber}
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    {reversalTarget.andRedraft ? "Reverse & Re-Draft as new entry" : "Full Accounting Reversal"}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReversalTarget(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                  <Info className="h-4 w-4 shrink-0 text-amber-600" />
+                  Double-Entry Accounting Policy
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-800/90">
+                  Posted vouchers cannot be silently deleted. Reversing creates an equal and opposite entry in the General Ledger and re-opens any settled sales invoices or purchase bills.
+                </p>
+              </div>
+
+              {reversalTarget.partyName && (
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Party</span>
+                    <span className="font-semibold text-slate-900">{reversalTarget.partyName}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Voucher Amount</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {formatMoney(reversalTarget.amount || 0, currency)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <label className="block space-y-1.5">
+                <span className="font-bold text-slate-800">
+                  Reason for Reversal * <span className="text-slate-400 font-normal">(Minimum 5 characters)</span>
+                </span>
+                <textarea
+                  rows={3}
+                  value={reversalReason}
+                  onChange={(e) => setReversalReason(e.target.value)}
+                  placeholder="e.g. Incorrect allocation amount entered, wrong settlement account, or customer cancelled payment..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                />
+              </label>
+
+              {/* Quick reason chips */}
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Allocation amount correction",
+                  "Wrong settlement account",
+                  "Cheque returned unpaid",
+                  "Duplicate entry correction",
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setReversalReason(chip)}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <Button
+                variant="outline"
+                type="button"
+                disabled={reversing}
+                onClick={() => setReversalTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={reversing || reversalReason.trim().length < 5}
+                onClick={() => void submitReversal()}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5"
+              >
+                {reversing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                {reversalTarget.andRedraft ? "Reverse & Open Re-Draft" : "Confirm Reversal"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
