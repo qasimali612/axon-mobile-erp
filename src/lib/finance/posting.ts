@@ -196,14 +196,21 @@ export async function createJournalDraft(actor: ActorContext, input: JournalDraf
       if (!branch) throw new ApiError(404, "BRANCH_NOT_FOUND", "The selected branch is not available.");
 
       const uniqueAccountIds = [...new Set(input.lines.map((line) => line.accountId))];
-      const accounts = await tx.account.findMany({
-        where: { id: { in: uniqueAccountIds }, companyId: actor.companyId, isActive: true },
-        select: { id: true, allowManualJournal: true, branchId: true, code: true },
-      });
+      const [accounts, bankAccounts] = await Promise.all([
+        tx.account.findMany({
+          where: { id: { in: uniqueAccountIds }, companyId: actor.companyId, isActive: true },
+          select: { id: true, allowManualJournal: true, branchId: true, code: true },
+        }),
+        tx.bankAccount.findMany({
+          where: { glAccountId: { in: uniqueAccountIds }, companyId: actor.companyId, isActive: true },
+          select: { id: true, glAccountId: true },
+        }),
+      ]);
       if (accounts.length !== uniqueAccountIds.length) {
         throw new ApiError(422, "INVALID_ACCOUNT", "One or more journal accounts are unavailable.");
       }
       const accountMap = new Map(accounts.map((account) => [account.id, account]));
+      const glToBankMap = new Map(bankAccounts.map((b) => [b.glAccountId, b.id]));
       const sourceModule = input.sourceModule || "MANUAL";
       if (sourceModule === "MANUAL") {
         const protectedAccount = accounts.find((account) => !account.allowManualJournal);
@@ -237,7 +244,7 @@ export async function createJournalDraft(actor: ActorContext, input: JournalDraf
           departmentId: line.departmentId || input.departmentId || null,
           customerId: line.customerId || null,
           supplierId: line.supplierId || null,
-          bankAccountId: line.bankAccountId || null,
+          bankAccountId: line.bankAccountId || glToBankMap.get(line.accountId) || null,
           salespersonId: line.salespersonId || null,
           lineNumber: index + 1,
           description: line.description.trim(),
