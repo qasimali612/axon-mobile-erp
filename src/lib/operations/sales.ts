@@ -242,7 +242,7 @@ export async function createSalesInvoiceDraft(actor: SalesActor, input: SalesInv
       await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: input.branchId, warehouseId: input.warehouseId, action: "SALES_INVOICE_DRAFT_CREATED", module: "sales", entityType: "SalesInvoice", entityId: invoice.id, entityReference: invoice.invoiceNumber, newValues: { status: invoice.status, grandTotal: moneyString(invoice.grandTotal) }, metadata: { stockEffect: "NONE_UNTIL_POSTING" } }, tx);
       return invoice;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
@@ -345,7 +345,7 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
       }, tx);
       return updated;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
@@ -591,6 +591,6 @@ export async function postSalesInvoice(actor: SalesActor, id: string) {
       await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: invoice.branchId, warehouseId: invoice.warehouseId, action: "SALES_INVOICE_POSTED", module: "sales", entityType: "SalesInvoice", entityId: invoice.id, entityReference: invoice.invoiceNumber, previousValues: { status: invoice.status }, newValues: { status: posted.status, journalEntryId: journal.id }, metadata: { movementGroupId, costTotal: moneyString(totalCost) } }, tx);
       return posted;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }

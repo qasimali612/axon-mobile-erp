@@ -423,7 +423,7 @@ export async function postPayment(actor: PaymentActor, id: string) {
       );
       return posted;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
@@ -564,7 +564,7 @@ export async function reversePayment(actor: PaymentActor, id: string, reason: st
 
       return updated;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
