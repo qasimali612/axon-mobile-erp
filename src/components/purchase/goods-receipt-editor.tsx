@@ -11,7 +11,7 @@ type TaxRule = { id: string; code: string; name: string; rate: string; appliesTo
 type Variant = { id: string; sku: string; name: string; purchasePrice?: string; barcodes: Array<{ barcode: string; isPrimary: boolean }> };
 type Product = { id: string; sku: string; name: string; model?: string | null; trackingMethod: "IMEI" | "SERIAL" | "BATCH" | "QUANTITY"; unit: { code: string; decimalPlaces: number }; taxRule?: { id: string; code: string; rate: string } | null; barcodes: Array<{ barcode: string }>; variants: Variant[] };
 type PurchaseOrder = { id: string; branchId: string; warehouseId: string; supplierId: string; orderNumber: string; status: string; currencyCode: string; lines: Array<{ id: string; productId: string; variantId: string; taxRuleId?: string | null; description: string; orderedQuantity: string; receivedQuantity: string; unitCost: string; discountAmount: string; taxRate: string }> };
-type Lookups = { branches: Array<{ id: string; code: string; name: string }>; warehouses: Array<{ id: string; branchId: string; code: string; name: string; allowReceiving: boolean }>; suppliers: Array<{ id: string; code: string; name: string }>; products: Product[]; taxRules: TaxRule[]; purchaseOrders: PurchaseOrder[] };
+type Lookups = { branches: Array<{ id: string; code: string; name: string }>; warehouses: Array<{ id: string; branchId: string; code: string; name: string; allowReceiving: boolean; isActive?: boolean }>; suppliers: Array<{ id: string; code: string; name: string }>; products: Product[]; taxRules: TaxRule[]; purchaseOrders: PurchaseOrder[] };
 type Row = { key: string; orderLineId: string; productId: string; variantId: string; description: string; quantity: string; acceptedQuantity: string; rejectedQuantity: string; unitCost: string; discountAmount: string; taxRuleId: string; taxRate: string; unitText: string; inspectionNotes: string };
 type Props = { currency: string; permissions: string[]; receiptId?: string; defaultBranchId?: string | null; defaultWarehouseId?: string | null; initialPurchaseOrderId?: string | null };
 
@@ -75,8 +75,9 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
       const selectedOrder = initialPurchaseOrderId ? lookupPayload.data.purchaseOrders.find((order: PurchaseOrder) => order.id === initialPurchaseOrderId) : null;
       const firstBranch = lookupPayload.data.branches[0];
       const branchId = selectedOrder?.branchId || (lookupPayload.data.branches.some((branch: { id: string }) => branch.id === defaultBranchId) ? defaultBranchId : firstBranch?.id) || "";
-      const warehouseId = selectedOrder?.warehouseId || (lookupPayload.data.warehouses.some((warehouse: { id: string; branchId: string; allowReceiving: boolean }) => warehouse.id === defaultWarehouseId && warehouse.branchId === branchId && warehouse.allowReceiving) ? defaultWarehouseId : lookupPayload.data.warehouses.find((warehouse: { branchId: string; allowReceiving: boolean }) => warehouse.branchId === branchId && warehouse.allowReceiving)?.id) || "";
-      setHeader((current) => ({ ...current, purchaseOrderId: selectedOrder?.id || "", branchId, warehouseId, supplierId: selectedOrder?.supplierId || "" }));
+      const warehouseId = selectedOrder?.warehouseId || (lookupPayload.data.warehouses.some((warehouse: { id: string; branchId: string; allowReceiving: boolean; isActive?: boolean }) => warehouse.id === defaultWarehouseId && warehouse.branchId === branchId && (warehouse.allowReceiving || warehouse.isActive)) ? defaultWarehouseId : lookupPayload.data.warehouses.find((warehouse: { branchId: string; allowReceiving: boolean; isActive?: boolean }) => warehouse.branchId === branchId && (warehouse.allowReceiving || warehouse.isActive))?.id) || "";
+      const supplierId = selectedOrder?.supplierId || lookupPayload.data.suppliers[0]?.id || "";
+      setHeader((current) => ({ ...current, purchaseOrderId: selectedOrder?.id || "", branchId, warehouseId, supplierId: current.supplierId || supplierId }));
       if (receiptPayload?.data) hydrateReceipt(receiptPayload.data);
       setLoading(false);
     }).catch((error) => { if (active) { setNotice({ kind: "error", text: error instanceof Error ? error.message : "Unable to load receiving data." }); setLoading(false); } });
@@ -115,6 +116,23 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
     // Run only when initial lookup data arrives; later row edits must never be erased.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookups]);
+
+  useEffect(() => {
+    if (!lookups || !header.branchId) return;
+    const branchWarehouses = lookups.warehouses.filter((w) => w.branchId === header.branchId && (w.allowReceiving || w.isActive));
+    if (branchWarehouses.length > 0 && !branchWarehouses.some((w) => w.id === header.warehouseId)) {
+      setHeader((current) => ({
+        ...current,
+        warehouseId: branchWarehouses[0].id,
+      }));
+    }
+    if (!header.supplierId && lookups.suppliers.length > 0) {
+      setHeader((current) => ({
+        ...current,
+        supplierId: lookups.suppliers[0].id,
+      }));
+    }
+  }, [header.branchId, header.warehouseId, header.supplierId, lookups]);
 
   function updateRow(key: string, patch: Partial<Row>) { setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row)); }
   function updateQuantity(row: Row, quantity: string) {
@@ -177,10 +195,14 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
   }, [header.documentDiscount, header.freightTotal, header.otherCharges, rows]);
 
   function validate() {
-    if (!header.branchId || !header.warehouseId || !header.supplierId) return "Select branch, warehouse, and supplier.";
+    if (!header.branchId) return "Select a branch.";
+    if (!header.warehouseId) return "Select a receiving warehouse.";
+    if (!header.supplierId) return "Select a supplier.";
     if (header.receiptType === "PO_BASED" && !header.purchaseOrderId) return "Select an approved purchase order.";
-    if (header.receiptType === "DIRECT" && header.directReceiptReason.trim().length < 10) return "Enter a direct-receipt reason of at least 10 characters.";
-    if (header.allowOverReceipt && header.overReceiptReason.trim().length < 10) return "Enter an over-receipt reason of at least 10 characters.";
+    if (header.receiptType === "DIRECT" && !header.directReceiptReason.trim() && !header.supplierInvoiceNumber?.trim()) {
+      return "Enter a direct-receipt reason or supplier invoice number.";
+    }
+    if (header.allowOverReceipt && header.overReceiptReason.trim().length < 3) return "Enter an over-receipt reason.";
     if (!rows.length) return "Add at least one received product.";
     for (const [index, row] of rows.entries()) {
       if (number(row.quantity) <= 0 || number(row.acceptedQuantity) + number(row.rejectedQuantity) !== number(row.quantity)) return `Line ${index + 1} accepted plus rejected must equal received quantity.`;
@@ -198,10 +220,14 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
     const error = validate(); if (error) { setNotice({ kind: "error", text: error }); return null; }
     setSaving(true); setNotice(null);
     try {
+      const effectiveDirectReason =
+        header.receiptType === "DIRECT"
+          ? header.directReceiptReason.trim() || (header.supplierInvoiceNumber ? `Direct receipt (Inv #${header.supplierInvoiceNumber})` : "Direct receipt")
+          : null;
       const body = {
         ...header, purchaseOrderId: header.receiptType === "PO_BASED" ? header.purchaseOrderId : null,
         supplierInvoiceNumber: header.supplierInvoiceNumber || null, supplierDeliveryNote: header.supplierDeliveryNote || null,
-        directReceiptReason: header.receiptType === "DIRECT" ? header.directReceiptReason : null,
+        directReceiptReason: effectiveDirectReason,
         overReceiptReason: header.allowOverReceipt ? header.overReceiptReason : null,
         invoiceDate: header.invoiceDate || null, dueDate: header.dueDate || null, notes: header.notes || null,
         idempotencyKey: documentId ? `edit-${documentId}` : `grn-${crypto.randomUUID()}`,
@@ -305,7 +331,7 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
   if (loading) return <div className="flex min-h-[55vh] items-center justify-center text-sm text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600"/>Loading receiving workspace…</div>;
   if (!lookups) return <div className="surface p-8 text-sm text-rose-700">{notice?.text || "Receiving data is unavailable."}</div>;
   const editable = status === "DRAFT";
-  const warehouses = lookups.warehouses.filter((warehouse) => warehouse.branchId === header.branchId && warehouse.allowReceiving);
+  const warehouses = lookups.warehouses.filter((warehouse) => warehouse.branchId === header.branchId && (warehouse.allowReceiving || warehouse.isActive));
   const activeRow = rows.find((row) => row.key === serialEditor); const activeProduct = activeRow ? productMap.get(activeRow.productId) : null;
 
   return <div className="space-y-4 pb-24">
@@ -316,13 +342,13 @@ export function GoodsReceiptEditor({ currency, permissions, receiptId, defaultBr
       <div className="space-y-4 min-w-0">
         <section className="surface overflow-hidden"><div className="border-b border-slate-100 bg-gradient-to-r from-blue-50 to-white px-5 py-3"><div className="flex items-center gap-2"><PackageCheck className="h-4 w-4 text-blue-600"/><h2 className="text-sm font-bold">Receipt header</h2></div></div><div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
           <label><span className="label">Receipt type *</span><select className={inputClass} value={header.receiptType} disabled={!editable} onChange={(event) => { const receiptType = event.target.value as "PO_BASED" | "DIRECT"; if (receiptType === "DIRECT" && !permissions.includes("PURCHASE_DIRECT_RECEIPT_CREATE")) { setNotice({ kind: "error", text: "You do not have direct-receipt permission." }); return; } setHeader((current) => ({ ...current, receiptType, purchaseOrderId: receiptType === "DIRECT" ? "" : current.purchaseOrderId })); }}><option value="PO_BASED">Against approved PO</option>{permissions.includes("PURCHASE_DIRECT_RECEIPT_CREATE") && <option value="DIRECT">Direct receipt</option>}</select></label>
-          {header.receiptType === "PO_BASED" ? <label className="sm:col-span-2"><span className="label">Purchase order *</span><select className={inputClass} value={header.purchaseOrderId} disabled={!editable} onChange={(event) => { const orderId = event.target.value; if (orderId) loadPurchaseOrder(orderId); else { setHeader((current) => ({ ...current, purchaseOrderId: "", supplierId: "" })); setRows([]); setNotice(null); } }}><option value="">Select open PO…</option>{lookups.purchaseOrders.map((order) => <option key={order.id} value={order.id}>{order.orderNumber} · {order.status.replaceAll("_", " ")}</option>)}</select></label> : <label className="sm:col-span-2"><span className="label">Direct receipt reason *</span><input className={inputClass} value={header.directReceiptReason} disabled={!editable} placeholder="Why no purchase order exists" onChange={(event) => setHeader((current) => ({ ...current, directReceiptReason: event.target.value }))}/></label>}
+          {header.receiptType === "PO_BASED" ? <label className="sm:col-span-2"><span className="label">Purchase order *</span><select className={inputClass} value={header.purchaseOrderId} disabled={!editable} onChange={(event) => { const orderId = event.target.value; if (orderId) loadPurchaseOrder(orderId); else { setHeader((current) => ({ ...current, purchaseOrderId: "", supplierId: "" })); setRows([]); setNotice(null); } }}><option value="">Select open PO…</option>{lookups.purchaseOrders.map((order) => <option key={order.id} value={order.id}>{order.orderNumber} · {order.status.replaceAll("_", " ")}</option>)}</select></label> : <label className="sm:col-span-2"><span className="label">Direct receipt reason *</span><input className={inputClass} value={header.directReceiptReason} disabled={!editable} placeholder="e.g. Counter direct receipt / supplier invoice" onChange={(event) => setHeader((current) => ({ ...current, directReceiptReason: event.target.value }))}/></label>}
           <label><span className="label">Receipt date *</span><input type="date" className={inputClass} value={header.receiptDate} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, receiptDate: event.target.value }))}/></label>
-          <label><span className="label">Supplier invoice</span><input className={inputClass} value={header.supplierInvoiceNumber} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, supplierInvoiceNumber: event.target.value }))}/></label>
+          <label><span className="label">Supplier invoice</span><input className={inputClass} value={header.supplierInvoiceNumber} disabled={!editable} placeholder="Invoice / Ref #" onChange={(event) => setHeader((current) => ({ ...current, supplierInvoiceNumber: event.target.value }))}/></label>
           <label><span className="label">Delivery note</span><input className={inputClass} value={header.supplierDeliveryNote} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, supplierDeliveryNote: event.target.value }))}/></label>
-          <label><span className="label">Branch *</span><select className={inputClass} value={header.branchId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => setHeader((current) => ({ ...current, branchId: event.target.value, warehouseId: lookups.warehouses.find((item) => item.branchId === event.target.value && item.allowReceiving)?.id || "" }))}>{lookups.branches.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
-          <label><span className="label">Supplier *</span><select className={inputClass} value={header.supplierId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => setHeader((current) => ({ ...current, supplierId: event.target.value }))}>{lookups.suppliers.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
-          <label><span className="label">Warehouse *</span><select className={inputClass} value={header.warehouseId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => setHeader((current) => ({ ...current, warehouseId: event.target.value }))}>{warehouses.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
+          <label><span className="label">Branch *</span><select className={inputClass} value={header.branchId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => { const bId = event.target.value; const firstW = lookups.warehouses.find((item) => item.branchId === bId && (item.allowReceiving || item.isActive))?.id || ""; setHeader((current) => ({ ...current, branchId: bId, warehouseId: firstW })); }}><option value="">Select branch…</option>{lookups.branches.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
+          <label><span className="label">Supplier *</span><select className={inputClass} value={header.supplierId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => setHeader((current) => ({ ...current, supplierId: event.target.value }))}><option value="">Select supplier…</option>{lookups.suppliers.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
+          <label><span className="label">Warehouse *</span><select className={inputClass} value={header.warehouseId} disabled={!editable || header.receiptType === "PO_BASED"} onChange={(event) => setHeader((current) => ({ ...current, warehouseId: event.target.value }))}><option value="">Select warehouse…</option>{warehouses.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label>
           <label><span className="label">Invoice date</span><input type="date" className={inputClass} value={header.invoiceDate} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, invoiceDate: event.target.value }))}/></label><label><span className="label">Due date</span><input type="date" className={inputClass} value={header.dueDate} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, dueDate: event.target.value }))}/></label>
           <label className="sm:col-span-2"><span className="label">Notes</span><input className={inputClass} value={header.notes} disabled={!editable} onChange={(event) => setHeader((current) => ({ ...current, notes: event.target.value }))}/></label>
         </div></section>

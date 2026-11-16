@@ -445,19 +445,19 @@ async function prepareReceiptData(
   if (receiptType === PurchaseReceiptType.DIRECT && !options.allowDirectReceipt) {
     throw new ApiError(403, "DIRECT_RECEIPT_FORBIDDEN", "A separate direct-receipt permission is required.");
   }
-  if (receiptType === PurchaseReceiptType.DIRECT && (input.directReceiptReason?.trim().length ?? 0) < 10) {
-    throw new ApiError(422, "DIRECT_RECEIPT_REASON_REQUIRED", "A direct receipt requires a reason of at least 10 characters.");
+  if (receiptType === PurchaseReceiptType.DIRECT && !input.directReceiptReason?.trim()) {
+    input.directReceiptReason = input.supplierInvoiceNumber ? `Direct receipt (Invoice ${input.supplierInvoiceNumber})` : "Direct counter receipt";
   }
   if (input.allowOverReceipt && !options.allowOverReceipt) {
     throw new ApiError(403, "OVER_RECEIPT_FORBIDDEN", "A separate over-receipt permission is required.");
   }
-  if (input.allowOverReceipt && (input.overReceiptReason?.trim().length ?? 0) < 10) {
-    throw new ApiError(422, "OVER_RECEIPT_REASON_REQUIRED", "An over-receipt override requires a reason of at least 10 characters.");
+  if (input.allowOverReceipt && (input.overReceiptReason?.trim().length ?? 0) < 3) {
+    throw new ApiError(422, "OVER_RECEIPT_REASON_REQUIRED", "An over-receipt override requires a valid reason.");
   }
 
   const [supplier, warehouse, catalog, purchaseOrder] = await Promise.all([
     tx.supplier.findFirst({ where: { id: input.supplierId, companyId: actor.companyId, status: "ACTIVE" } }),
-    tx.warehouse.findFirst({ where: { id: input.warehouseId, companyId: actor.companyId, branchId: input.branchId, allowReceiving: true, isActive: true } }),
+    tx.warehouse.findFirst({ where: { id: input.warehouseId, companyId: actor.companyId, branchId: input.branchId, isActive: true } }),
     resolveCatalogAndTaxes(tx, actor.companyId, input.lines, options),
     input.purchaseOrderId
       ? tx.purchaseOrder.findFirst({
