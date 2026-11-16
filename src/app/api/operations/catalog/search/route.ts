@@ -23,12 +23,16 @@ export async function GET(request: Request) {
     // Also look up any products/variants matching an IMEI or device identifier in stock
     let imeiProductIds: string[] = [];
     if (q && q.length >= 3) {
+      const cleanQ = q.replace(/[\s-]+/g, "");
       const matchingUnits = await prisma.deviceIdentifier.findMany({
         where: {
-          value: { contains: q, mode: "insensitive" },
+          companyId: context.company.id,
+          OR: [
+            { value: { contains: q, mode: "insensitive" } },
+            { normalizedValue: { contains: cleanQ.toUpperCase() } },
+          ],
           stockUnit: {
-            companyId: context.company.id,
-            ...(warehouseId ? { warehouseId } : {}),
+            ...(warehouseId ? { currentWarehouseId: warehouseId } : {}),
             ...(mode === "sale" ? { status: "IN_STOCK" } : {}),
           },
         },
