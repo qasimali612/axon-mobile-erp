@@ -8,6 +8,7 @@ import {
   Barcode,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   Eye,
   Filter,
@@ -670,7 +671,7 @@ export function ProductCatalog({
                         {canViewCost ? <td className="table-cell text-right font-mono text-xs text-slate-600">{formatMoney(variant?.purchasePrice || 0, currency)}</td> : null}
                         <td className="table-cell text-right"><p className="font-mono text-xs font-semibold text-slate-800">{formatMoney(variant?.retailPrice || 0, currency)}</p><p className="mt-1 text-[9px] text-slate-400">Min {formatMoney(variant?.minimumSellingPrice || 0, currency)}</p></td>
                         <td className="table-cell"><Badge tone={product.status === "ACTIVE" ? "green" : product.status === "ARCHIVED" ? "red" : "amber"}>{titleCase(product.status)}</Badge></td>
-                        <td className="table-cell relative"><button onClick={() => setActionsId(actionsId === product.id ? null : product.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow"><MoreHorizontal className="h-4 w-4" /></button>{actionsId === product.id ? <div className="absolute right-8 top-10 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-float"><Link href={`/catalog/products/${product.id}`} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Eye className="h-3.5 w-3.5" />View details</Link>{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => { setVariantProduct(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" />Manage variants</button> : null}{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => openEdit(product)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" />Edit product</button> : null}{canArchive && product.status !== "ARCHIVED" ? <button onClick={() => { setArchiveTarget(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Archive className="h-3.5 w-3.5" />Archive</button> : null}</div> : null}</td>
+                        <td className="table-cell relative"><button onClick={() => setActionsId(actionsId === product.id ? null : product.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 hover:shadow"><MoreHorizontal className="h-4 w-4" /></button>{actionsId === product.id ? <div className="absolute right-8 top-10 z-20 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-float"><Link href={`/catalog/products/${product.id}`} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Eye className="h-3.5 w-3.5" />View details</Link>{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => { setVariantProduct(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Plus className="h-3.5 w-3.5" />Manage variants</button> : null}{canEdit && product.status !== "ARCHIVED" ? <button onClick={() => openEdit(product)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" />Edit product</button> : null}{canCreate && product.status !== "ARCHIVED" ? <button onClick={() => { setEditing(null); const cloned = formFromProduct(product); const rand = Math.floor(10 + Math.random() * 90); setForm({ ...cloned, sku: `${product.sku}-QTY-${rand}`, variant: { ...cloned.variant, sku: `${cloned.variant.sku}-QTY-${rand}` }, trackingMethod: "QUANTITY", costingMethod: "WEIGHTED_AVERAGE" }); setFormStep("identity"); setFormOpen(true); setActionsId(null); toast.info("Cloned as a new non-IMEI product draft."); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"><Copy className="h-3.5 w-3.5" />Clone as Non-IMEI</button> : null}{canArchive && product.status !== "ARCHIVED" ? <button onClick={() => { setArchiveTarget(product); setActionsId(null); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 hover:bg-red-50"><Archive className="h-3.5 w-3.5" />Archive</button> : null}</div> : null}</td>
                       </tr>
                     );
                   })}
@@ -840,6 +841,27 @@ export function ProductCatalog({
                           </span>
                         )}
                       </p>
+                      {editing && form.trackingMethod !== editing.trackingMethod && (
+                        <div className="mt-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                          <p className="font-bold">⚠️ Cannot change tracking method on an existing product with history.</p>
+                          <p className="mt-0.5 text-[11px] text-amber-700">
+                            This product already has transactions or serial numbers linked to it in the ledger.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rand = Math.floor(10 + Math.random() * 90);
+                              setEditing(null);
+                              setRoot("sku", `${editing.sku}-QTY-${rand}`);
+                              setVariant("sku", `${editing.variants[0]?.sku || editing.sku}-QTY-${rand}`);
+                              toast.success("Switched to New Product mode. You can now save it as a new non-IMEI model.");
+                            }}
+                            className="mt-2 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                          >
+                            <Copy className="h-3.5 w-3.5" /> Save as New Product Model instead
+                          </button>
+                        </div>
+                      )}
                     </Field>
                     <Field label="Model">
                       <input className="input" placeholder="e.g. A3106" value={form.model} onChange={(e) => setRoot("model", e.target.value)} />
