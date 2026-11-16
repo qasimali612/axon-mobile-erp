@@ -401,7 +401,6 @@ export async function approveSalesInvoice(actor: SalesActor, id: string) {
 export async function postSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx);
       const invoice = await lockSalesInvoice(tx, id, actor.companyId);
       if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
       if (invoice.status === OperationalDocumentStatus.POSTED) return invoice;

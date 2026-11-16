@@ -304,7 +304,6 @@ async function validateAllocations(tx: Prisma.TransactionClient, payment: NonNul
 
 export async function approvePayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(async (tx) => {
-    await ensureSingleUserDatabase(tx as any);
     const payment = await lockPayment(tx, id, actor.companyId);
     if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
     if (payment.status === OperationalDocumentStatus.APPROVED || payment.status === OperationalDocumentStatus.POSTED) return payment;
@@ -322,7 +321,6 @@ export async function postPayment(actor: PaymentActor, id: string) {
 
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx as any);
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found.");
       if (payment.status === OperationalDocumentStatus.POSTED) return payment;
@@ -436,7 +434,6 @@ export async function cancelPayment(actor: PaymentActor, id: string, reason?: st
 
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx as any);
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment voucher was not found.");
       if (payment.status === OperationalDocumentStatus.CANCELLED) return payment;
@@ -499,7 +496,6 @@ export async function reversePayment(actor: PaymentActor, id: string, reason: st
 
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx as any);
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment voucher was not found.");
       if (payment.status === OperationalDocumentStatus.REVERSED) {
@@ -575,7 +571,6 @@ export async function reversePayment(actor: PaymentActor, id: string, reason: st
 export async function deletePayment(actor: PaymentActor, id: string) {
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx as any);
       const payment = await lockPayment(tx, id, actor.companyId);
       if (!payment) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment voucher was not found.");
       if (
