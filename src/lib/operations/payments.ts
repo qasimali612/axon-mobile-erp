@@ -127,7 +127,7 @@ export async function createPaymentDraft(actor: PaymentActor, input: PaymentDraf
       await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: input.branchId, action: "PAYMENT_DRAFT_CREATED", module: "finance", entityType: "Payment", entityId: payment.id, entityReference: payment.paymentNumber, newValues: { status: payment.status, amount: moneyString(payment.amount), direction: payment.direction, paymentMethodId }, metadata: { settlementSource: paymentMethodId ? "PAYMENT_METHOD" : "DIRECT_ACCOUNT" } }, tx);
       return payment;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
@@ -239,7 +239,7 @@ export async function updatePaymentDraft(actor: PaymentActor, id: string, input:
 
       return updated;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 
@@ -482,7 +482,7 @@ export async function cancelPayment(actor: PaymentActor, id: string, reason?: st
 
       return updated;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    { maxWait: 20_000, timeout: 60_000 },
   );
 }
 

@@ -1968,7 +1968,18 @@ export function PaymentRegister({
                         placeholder="0.00"
                         className="h-11 w-full rounded-xl border border-slate-300 pl-14 pr-4 text-lg font-mono font-black text-slate-950 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={(e) => {
+                          const newAmt = e.target.value;
+                          setAmount(newAmt);
+                          const num = parseFloat(newAmt) || 0;
+                          if (targetId && (Object.keys(docAllocations).length <= 1 || docAllocations[targetId])) {
+                            if (num > 0) {
+                              setDocAllocations({ [targetId]: String(num) });
+                            } else {
+                              setDocAllocations({});
+                            }
+                          }
+                        }}
                       />
                     </div>
                   </label>
