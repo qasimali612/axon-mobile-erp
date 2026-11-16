@@ -219,13 +219,37 @@ export async function postOperationalJournal(
     throw new ApiError(422, "INVALID_POSTING_ACCOUNT", "One or more source posting accounts are unavailable in this branch.");
   }
 
-  const { number: voucherNumber, period } = await allocateOperationalNumber(tx, {
+  let { number: voucherNumber, period } = await allocateOperationalNumber(tx, {
     companyId: input.actor.companyId,
     branchId: input.branchId,
     postingDate: input.postingDate,
     documentType: input.documentType,
     suffix: input.voucherSuffix,
   });
+
+  // Guard against any collision with pre-existing journals (e.g. legacy or unsequenced data)
+  let attempts = 0;
+  while (attempts < 100) {
+    const existing = await tx.journalEntry.findUnique({
+      where: {
+        companyId_voucherNumber: {
+          companyId: input.actor.companyId,
+          voucherNumber,
+        },
+      },
+      select: { id: true },
+    });
+    if (!existing) break;
+    attempts++;
+    const reallocated = await allocateOperationalNumber(tx, {
+      companyId: input.actor.companyId,
+      branchId: input.branchId,
+      postingDate: input.postingDate,
+      documentType: input.documentType,
+      suffix: input.voucherSuffix,
+    });
+    voucherNumber = reallocated.number;
+  }
   const journal = await tx.journalEntry.create({
     data: {
       companyId: input.actor.companyId,

@@ -52,10 +52,11 @@ export async function createPaymentDraft(actor: PaymentActor, input: PaymentDraf
   if (expectedParty === "customer" && (!input.customerId || input.supplierId)) throw new ApiError(422, "INVALID_PAYMENT_PARTY", "Customer receipts and refunds require one customer.");
   if (expectedParty === "supplier" && (!input.supplierId || input.customerId)) throw new ApiError(422, "INVALID_PAYMENT_PARTY", "Supplier payments and refunds require one supplier.");
 
+  const idempotencyKey = input.idempotencyKey || crypto.randomUUID();
   return prisma.$transaction(
     async (tx) => {
       const existing = await tx.payment.findUnique({
-        where: { companyId_idempotencyKey: { companyId: actor.companyId, idempotencyKey: input.idempotencyKey } },
+        where: { companyId_idempotencyKey: { companyId: actor.companyId, idempotencyKey } },
         include: { allocations: true },
       });
       if (existing) return existing;
@@ -111,7 +112,7 @@ export async function createPaymentDraft(actor: PaymentActor, input: PaymentDraf
           amount,
           reference: input.reference || null,
           notes: input.notes || null,
-          idempotencyKey: input.idempotencyKey,
+          idempotencyKey,
           preparedById: actor.userId,
           allocations: {
             create: allocations.map((allocation) => ({
@@ -526,7 +527,7 @@ export async function reversePayment(actor: PaymentActor, id: string, reason: st
         sourceDocumentNumber: payment.paymentNumber,
         idempotencyKey: `PAYMENT-REVERSAL:${payment.id}`,
         documentType: "PAYMENT_REVERSAL_JOURNAL",
-        voucherSuffix: incoming ? "RC" : "PV",
+        voucherSuffix: incoming ? "RCR" : "PVR",
         narration: `Reversal of ${payment.paymentNumber}: ${normalizedReason}`,
         referenceDocument: payment.paymentNumber,
         allowApproverPosting: true,
