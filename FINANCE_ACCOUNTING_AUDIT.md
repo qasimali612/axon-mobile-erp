@@ -1,0 +1,153 @@
+# AXON MOBILE ERP — FINANCIAL ACCOUNTING AUDIT
+## Comprehensive Double-Entry Review, Chart of Accounts Audit & Root-Cause Rectification Analysis
+
+**Company:** AXON · Gondal Mobile Center (`3cc6f3ef-718e-4bd3-9531-3f1955011586`)  
+**Fiscal Period:** FY2026-27 (Period: November 2026)  
+**Reporting Currency:** PKR (₨)  
+**Accounting Framework:** Double-Entry Accrual Accounting (IFRS / IAS 1 / IAS 2)  
+**Audit Date:** November 2026  
+**Auditor:** Senior CFO, Chartered Management Accountant & ERP Financial Controller  
+
+---
+
+## 1. Executive Summary
+
+This accounting audit conducts an exhaustive line-by-line inspection of all posted financial vouchers, ledger accounts, and revenue/expense classifications within Axon Mobile ERP.
+
+The audit identifies the precise root causes of two major reporting anomalies reported by management:
+1. **Gross Profit & Revenue Inflation:** Dashboards previously lumped ₨ 1,025,740.00 of physical opening stock transfers into Operating Sales Revenue, artificially inflating revenue to ₨ 1,367,036.00 and gross profit to ₨ 1,042,706.00.
+2. **Negative Cash on Hand Balance:** The initial cash opening journal entry (`ISB--JV-FY2026-27-000001`) was recorded with reversed debits and credits, resulting in a credit balance on Account 1000 (-₨ 69,140.00) and an unnatural debit balance on Share Capital.
+
+This report documents the forensic evidence, double-entry classifications, and formal proposed rectifications for executive authorization.
+
+---
+
+## 2. Complete Chart of Accounts Census
+
+The chart of accounts for Gondal Mobile Center comprises 26 active ledger accounts spanning standard double-entry classes:
+
+| Code | Account Title | Account Class | Subclass / Account Type | Normal Balance | Audit Role |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1000** | Cash on Hand | ASSET | CASH | DEBIT | Cash drawer & register vault |
+| **1010** | Current Account Bank | ASSET | BANK | DEBIT | Commercial checking account |
+| **1100** | Trade Receivables | ASSET | ACCOUNTS_RECEIVABLE | DEBIT | Customer credit sales ledger |
+| **1200** | Merchandise Inventory | ASSET | INVENTORY | DEBIT | Serialized handsets & accessories |
+| **1210** | Recoverable Input Tax | ASSET | TAX_RECEIVABLE | DEBIT | GST / Sales tax paid on inward purchases |
+| **1300** | Incentives Receivable | ASSET | INCENTIVE_RECEIVABLE | DEBIT | Vendor target achievement incentives |
+| **1310** | Supplier Rebates Receivable | ASSET | REBATE_RECEIVABLE | DEBIT | Brand volume rebate receivables |
+| **1500** | Equipment at Cost | ASSET | FIXED_ASSET | DEBIT | Store fixtures, POS terminals, counters |
+| **1510** | Accumulated Depreciation | ASSET | ACCUMULATED_DEPRECIATION | CREDIT | Contra-asset asset depreciation |
+| **2000** | Trade Payables | LIABILITY | ACCOUNTS_PAYABLE | CREDIT | Distributor open supplier bills |
+| **2100** | Accrued Incentives Payable | LIABILITY | INCENTIVE_PAYABLE | CREDIT | Sales rep commission provisions |
+| **2110** | Customer Rebates Payable | LIABILITY | REBATE_PAYABLE | CREDIT | Customer volume rebate provisions |
+| **2200** | Sales Tax Payable | LIABILITY | TAX_PAYABLE | CREDIT | Output sales tax collected on sales |
+| **3000** | Share Capital | EQUITY | CAPITAL | CREDIT | Owner invested equity |
+| **3100** | Retained Earnings | EQUITY | RETAINED_EARNINGS | CREDIT | Prior periods accumulated surplus |
+| **4000** | Mobile and Accessory Sales | REVENUE | SALES_REVENUE | CREDIT | Core operational trading revenue |
+| **4010** | Incentive Income | REVENUE | INCENTIVE_INCOME | CREDIT | Distributor sales target incentives |
+| **4020** | Rebate Income | REVENUE | REBATE_INCOME | CREDIT | Supplier volume price protection |
+| **4030** | Inventory Adjustment Gain | REVENUE | INVENTORY_ADJUSTMENT_GAIN | CREDIT | Non-operating stock adjustment gain |
+| **5000** | Cost of Goods Sold | COGS | COGS | DEBIT | Cost of handsets and accessories sold |
+| **6000** | General Operating Expense | EXPENSE | GENERAL_EXPENSE | DEBIT | Shop rent, electricity, maintenance |
+| **6100** | Depreciation Expense | EXPENSE | DEPRECIATION_EXPENSE | DEBIT | Monthly equipment depreciation charge |
+| **6200** | Sales Incentive Expense | EXPENSE | INCENTIVE_EXPENSE | DEBIT | Commission paid to counter sales reps |
+| **6300** | Customer Rebate Expense | EXPENSE | REBATE_EXPENSE | DEBIT | Customer promotional loyalty discounts |
+| **6400** | Gain/Loss on Asset Disposal | EXPENSE | ASSET_DISPOSAL | DEBIT | Net gain or loss on asset retirement |
+| **6500** | Inventory Adjustment Loss | EXPENSE | INVENTORY_ADJUSTMENT_LOSS | DEBIT | Physical shrinkage, damage, obsolescence |
+
+---
+
+## 3. Forensic Analysis of Critical Accounting Discrepancies
+
+### 3.1 Issue A: Inventory Adjustment Gain Lumped into Sales Revenue
+**Audit Evidence:**
+- Vouchers `ISB--SAV-FY2026-27-000001` (₨ 756,410.00), `ISB--SAV-FY2026-27-000002` (₨ 266,780.00), and `ISB--SAV-FY2026-27-000003` (₨ 2,550.00) were generated by `StockAdjustment` records imported from legacy software.
+- The adjustment service correctly debited `1200 Merchandise Inventory` and credited `4030 Inventory Adjustment Gain` for a total of ₨ 1,025,740.00.
+- **The Defect:** In `src/lib/finance/reports.ts` (legacy), the report query aggregated all accounts with `AccountClass === "REVENUE"`:
+  ```ts
+  // FLURRED LEGACY QUERY
+  const revenue = sumAccounts(periodMap, (account) => account.accountClass === AccountClass.REVENUE, true);
+  ```
+  Because Account `4030` carried `AccountClass: "REVENUE"`, this non-operating stock adjustment was lumped into Top-Line Sales Revenue, creating the illusion of ₨ 1,367,036.00 in sales and ₨ 1,042,706.00 in gross profit!
+- **Accounting Standard Violation:** IAS 1 (Presentation of Financial Statements) and IAS 2 (Inventories) strictly mandate that Operating Sales Turnover must reflect contracts with customers. Initial inventory creation or stock gains must be reported under Non-Operating Income or Opening Equity.
+
+### 3.2 Issue B: Negative Cash Balance on Hand (Voucher `ISB--JV-FY2026-27-000001`)
+**Audit Evidence:**
+- Voucher `ISB--JV-FY2026-27-000001` was posted on `2026-11-06` with narration `"Opening balance voucher"`.
+- Lines committed to the database:
+  - Line 1: `Account 1000 Cash on Hand` → **Debit: ₨ 0.00 | Credit: ₨ 69,140.00**
+  - Line 2: `Account 3000 Share Capital` → **Debit: ₨ 69,140.00 | Credit: ₨ 0.00**
+- **Root Cause:** The data entry operator completely inverted the debit and credit sides! Cash on Hand (an Asset) was credited, and Share Capital (an Equity account) was debited.
+- **Resulting Impact:** Cash on Hand was dragged negative by ₨ 69,140.00. Subsequent customer cash receipts of ₨ 169,050.00 brought the closing balance to only ₨ 99,910.00, rather than the true cash balance of ₨ 238,190.00.
+
+---
+
+## 4. True Double-Entry Financial Position (FY2026-27 Active Period)
+
+With the financial engine properly segregating operating and non-operating revenue, the verified double-entry position is:
+
+### 4.1 Operating Trading Performance
+- **Operating Mobile & Accessory Sales (`4000`):** ₨ 341,296.00
+- **Cost of Goods Sold (`5000`):** (₨ 324,330.00)
+- **True Trading Gross Profit:** **₨ 16,966.00**
+- **Gross Profit Margin:** **4.97%**
+- **Operating Expenses (`6000-6300`):** ₨ 0.00
+- **Operating Profit (EBIT):** **₨ 16,966.00**
+
+### 4.2 Non-Operating Gains & Bottom Line
+- **Non-Operating Other Income (Account `4030` Stock Gain):** ₨ 1,025,740.00
+- **Non-Operating Expenses:** ₨ 0.00
+- **Net Profit for the Period:** **₨ 1,042,706.00**
+
+---
+
+## 5. Formal Proposed Rectification Vouchers
+
+Per governance rules, historical posted journals are preserved intact. The following proposed adjustment vouchers are submitted for management sign-off:
+
+### Proposed Rectification 1: Cash Opening Balance Correction
+- **Voucher Type:** `JOURNAL`
+- **Narration:** `Rectification of reversed debits/credits in opening cash voucher ISB--JV-FY2026-27-000001`
+- **Double-Entry Schedule:**
+  - **Debit:** `1000 Cash on Hand` — **₨ 138,280.00**
+  - **Credit:** `3000 Share Capital` — **₨ 138,280.00**
+
+**Before / After Financial Impact:**
+
+| Account | Pre-Correction Balance | Adjustment Amount | Post-Correction Balance | Accounting Position |
+| :--- | :--- | :--- | :--- | :--- |
+| `1000 Cash on Hand` | ₨ 99,910.00 (Dr) | +₨ 138,280.00 (Dr) | **₨ 238,190.00 (Dr)** | Normal Asset (Reflects ₨ 69.1k opening + ₨ 169k cash sales) |
+| `3000 Share Capital` | ₨ 69,140.00 (Dr, Unnatural) | +₨ 138,280.00 (Cr) | **₨ 69,140.00 (Cr)** | Normal Equity (Owner initial cash capital contribution) |
+| **Total Assets** | ₨ 973,566.00 | +₨ 138,280.00 | **₨ 1,111,846.00** | Net asset expansion |
+| **Total Equity** | ₨ 973,566.00 | +₨ 138,280.00 | **₨ 1,111,846.00** | Matched equity expansion |
+| **Balance Variance** | **₨ 0.00** | — | **₨ 0.00** | **Exact Balance Maintained** |
+
+---
+
+### Proposed Rectification 2: Reclassification of Opening Stock to Capital Equity
+- **Voucher Type:** `JOURNAL`
+- **Narration:** `Reclassification of opening stock transfer from Stock Adjustment Gain to Owner Equity`
+- **Double-Entry Schedule:**
+  - **Debit:** `4030 Inventory Adjustment Gain` — **₨ 1,025,740.00**
+  - **Credit:** `3000 Share Capital` — **₨ 1,025,740.00**
+
+**Before / After Financial Impact:**
+
+| Account / Metric | Pre-Reclassification | Adjustment Amount | Post-Reclassification | Management Significance |
+| :--- | :--- | :--- | :--- | :--- |
+| `4030 Inventory Gain` | ₨ 1,025,740.00 (Cr) | -₨ 1,025,740.00 (Dr) | **₨ 0.00** | Cleanses non-operating P&L gain |
+| `3000 Share Capital` | ₨ 69,140.00 (Cr)* | +₨ 1,025,740.00 (Cr) | **₨ 1,094,880.00 (Cr)** | Reflects owner total capital (Cash + Stock) |
+| **Net Profit for Period** | ₨ 1,042,706.00 | -₨ 1,025,740.00 | **₨ 16,966.00** | **Pure operational trading profit** |
+| **Total Equity** | ₨ 1,111,846.00 | ₨ 0.00 (reclass within equity) | **₨ 1,111,846.00** | Preserves balance sheet equation |
+
+*\*Assumes Rectification 1 is authorized and posted.*
+
+---
+
+## 6. Audit Verdict
+
+The double-entry general ledger is fully verified. With the financial engine upgraded to isolate Account 4030 from top-line revenue, financial statements present an authentic view of core trading operations.
+
+---
+
+© 2026 Copyright Reserved · Qasim Ali · 0315-5049489

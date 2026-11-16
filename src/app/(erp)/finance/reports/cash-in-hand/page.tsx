@@ -57,41 +57,48 @@ export default async function CashInHandReportPage({
   });
 
   return (
-    <CashInHandWorkspace
-      initialData={{
-        accounts: report.accounts,
-        periodSummary: {
-          openingBalance: report.periodSummary.openingBalance.toString(),
-          totalInflows: report.periodSummary.totalInflows.toString(),
-          totalOutflows: report.periodSummary.totalOutflows.toString(),
-          netMovement: report.periodSummary.netMovement.toString(),
-          closingBalance: report.periodSummary.closingBalance.toString(),
-        },
-        sourceBreakdown: {
-          inflows: report.sourceBreakdown.inflows.map((i) => ({
-            ...i,
-            total: i.total.toString(),
+    <div className="mx-auto max-w-[1500px] pb-12">
+      <CashInHandWorkspace
+        initialData={{
+          accounts: report.accounts,
+          periodSummary: {
+            openingBalance: report.periodSummary.openingBalance.toString(),
+            totalInflows: report.periodSummary.totalInflows.toString(),
+            totalOutflows: report.periodSummary.totalOutflows.toString(),
+            netMovement: report.periodSummary.netMovement.toString(),
+            closingBalance: report.periodSummary.closingBalance.toString(),
+          },
+          sourceBreakdown: {
+            inflows: report.sourceBreakdown.inflows.map((i) => ({
+              ...i,
+              total: i.total.toString(),
+            })),
+            outflows: report.sourceBreakdown.outflows.map((o) => ({
+              ...o,
+              total: o.total.toString(),
+            })),
+          },
+          movements: report.movements.map((m) => ({
+            ...m,
+            cashIn: m.cashIn.toString(),
+            cashOut: m.cashOut.toString(),
+            runningBalance: m.runningBalance.toString(),
           })),
-          outflows: report.sourceBreakdown.outflows.map((o) => ({
-            ...o,
-            total: o.total.toString(),
-          })),
-        },
-        movements: report.movements.map((m) => ({
-          ...m,
-          cashIn: m.cashIn.toString(),
-          cashOut: m.cashOut.toString(),
-          runningBalance: m.runningBalance.toString(),
-        })),
-      }}
-      branches={branches}
-      currency={context.company.currencyCode}
-      canExport={context.permissions.includes("FINANCIAL_REPORTS_EXPORT")}
-      selectedBranchId={branchId}
-      selectedAccountId={accountId}
-      fromDate={fromDate}
-      toDate={toDate}
-    />
+        }}
+        branches={branches}
+        currency={context.company.currencyCode}
+        canExport={context.permissions.includes("FINANCIAL_REPORTS_EXPORT")}
+        selectedBranchId={branchId}
+        selectedAccountId={accountId}
+        fromDate={fromDate}
+        toDate={toDate}
+      />
+      {/* Mandatory Footer */}
+      <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
+        <p className="font-semibold text-slate-700">Axon Mobile ERP · Financial Command Center</p>
+        <p className="mt-1">© 2026 Copyright Reserved · Qasim Ali · 0315-5049489</p>
+      </footer>
+    </div>
   );
 }
 

@@ -305,6 +305,12 @@ export default async function FinancialStatementsPrintPage({
           notes="These financial statements are prepared from the verified company ledger under standard accounting principles. All figures reflect authoritative posted journal lines."
           documentId={`FS-${period.fiscalYear.code}-${period.name}`}
         />
+
+        {/* Mandatory Footer */}
+        <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+          <p className="font-semibold text-slate-700">Axon Mobile ERP · Financial Command Center</p>
+          <p className="mt-0.5">© 2026 Copyright Reserved · Qasim Ali · 0315-5049489</p>
+        </footer>
       </article>
     </div>
   );

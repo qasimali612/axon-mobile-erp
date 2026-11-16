@@ -177,6 +177,12 @@ export default async function TrialBalancePrintPage({
           notes="This trial balance is automatically consolidated from the immutable double-entry general ledger. Zero synthetic or balancing adjustments are inserted."
           documentId={`TB-${period.fiscalYear.code}-${period.name}`}
         />
+
+        {/* Mandatory Footer */}
+        <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+          <p className="font-semibold text-slate-700">Axon Mobile ERP · Financial Command Center</p>
+          <p className="mt-0.5">© 2026 Copyright Reserved · Qasim Ali · 0315-5049489</p>
+        </footer>
       </article>
     </div>
   );
