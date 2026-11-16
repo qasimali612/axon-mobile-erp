@@ -394,6 +394,19 @@ export function ProductCatalog({
     }));
   }
 
+  function changeTrackingMethod(value: string) {
+    setForm((current) => ({
+      ...current,
+      trackingMethod: value,
+      costingMethod:
+        value === "IMEI" || value === "SERIAL"
+          ? "SPECIFIC"
+          : current.costingMethod === "SPECIFIC"
+          ? "WEIGHTED_AVERAGE"
+          : current.costingMethod,
+    }));
+  }
+
   async function save(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -802,14 +815,31 @@ export function ProductCatalog({
                       </select>
                     </Field>
                     <Field label="Tracking method" required>
-                      <select className="select" value={form.trackingMethod} disabled={["SMARTPHONE", "FEATURE_PHONE"].includes(form.productType)} onChange={(e) => setRoot("trackingMethod", e.target.value)}>
-                        {["IMEI", "SERIAL", "BATCH", "QUANTITY"].map((item) => <option key={item} value={item}>{titleCase(item)}</option>)}
+                      <select
+                        className="select"
+                        value={form.trackingMethod}
+                        onChange={(e) => changeTrackingMethod(e.target.value)}
+                      >
+                        <option value="IMEI">IMEI (With IMEI · Handset serial tracking)</option>
+                        <option value="QUANTITY">Without IMEI (Quantity · Bulk stock)</option>
+                        <option value="SERIAL">Serial Number (Single Serial)</option>
+                        <option value="BATCH">Batch / Lot Tracked</option>
                       </select>
-                      {["SMARTPHONE", "FEATURE_PHONE"].includes(form.productType) && (
-                        <p className="mt-1 text-[10px] font-semibold text-emerald-700">
-                          🔒 Locked to IMEI: Enforced for cellular devices & PTA passport.
-                        </p>
-                      )}
+                      <p className="mt-1 text-[10px]">
+                        {form.trackingMethod === "IMEI" ? (
+                          <span className="font-semibold text-emerald-700">
+                            📱 With IMEI: Tracks physical devices individually with dual/single IMEI & PTA validation.
+                          </span>
+                        ) : form.trackingMethod === "QUANTITY" ? (
+                          <span className="font-semibold text-blue-700">
+                            📦 Without IMEI: Tracks inventory by simple count/quantity without requiring IMEI scanning.
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-slate-600">
+                            ℹ️ Tracked via {titleCase(form.trackingMethod)}.
+                          </span>
+                        )}
+                      </p>
                     </Field>
                     <Field label="Model">
                       <input className="input" placeholder="e.g. A3106" value={form.model} onChange={(e) => setRoot("model", e.target.value)} />
