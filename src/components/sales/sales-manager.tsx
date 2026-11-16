@@ -5,26 +5,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  BadgeCheck,
   BadgeDollarSign,
   Ban,
   Banknote,
-  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Edit3,
   Eye,
   FileClock,
-  FilePlus2,
   Loader2,
-  PackageCheck,
   Printer,
   Receipt,
   RefreshCw,
   RotateCcw,
   Search,
   ShoppingCart,
+  TrendingUp,
   WalletCards,
   X,
   Zap,
@@ -37,8 +34,8 @@ import { formatDate, formatMoney, titleCase } from "@/lib/utils";
 
 function statusTone(status: string) {
   if (["POSTED", "PAID"].includes(status)) return "green" as const;
-  if (["APPROVED", "SUBMITTED", "PARTIAL"].includes(status)) return "amber" as const;
-  if (["REVERSED", "CANCELLED", "REJECTED", "OVERDUE"].includes(status)) return "red" as const;
+  if (["PARTIAL", "PARTIALLY_PAID"].includes(status)) return "amber" as const;
+  if (["REVERSED", "CANCELLED", "OVERDUE"].includes(status)) return "red" as const;
   return "slate" as const;
 }
 
@@ -52,7 +49,6 @@ type Props = {
 
 export function SalesManager({
   currency,
-  userId,
   permissions,
   initialStatus = "",
   initialPaymentStatus = "",
@@ -67,10 +63,8 @@ export function SalesManager({
   const [cancelTarget, setCancelTarget] = useState<any>(null);
   const [reversalTarget, setReversalTarget] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState("");
-  const [creditOverrideTarget, setCreditOverrideTarget] = useState<any>(null);
-  const [creditOverrideReason, setCreditOverrideReason] = useState("");
   const [batchPosting, setBatchPosting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"ALL" | "AWAITING" | "POSTED" | "DRAFT" | "UNPAID">("ALL");
+  const [activeTab, setActiveTab] = useState<"ALL" | "DRAFT" | "POSTED" | "UNPAID">("ALL");
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -111,19 +105,16 @@ export function SalesManager({
     void load();
   }, [load]);
 
-  function handleTabChange(tab: "ALL" | "AWAITING" | "POSTED" | "DRAFT" | "UNPAID") {
+  function handleTabChange(tab: "ALL" | "DRAFT" | "POSTED" | "UNPAID") {
     setActiveTab(tab);
     if (tab === "ALL") {
       setStatus("");
       setPaymentStatus("");
-    } else if (tab === "AWAITING") {
-      setStatus("SUBMITTED");
+    } else if (tab === "DRAFT") {
+      setStatus("DRAFT");
       setPaymentStatus("");
     } else if (tab === "POSTED") {
       setStatus("POSTED");
-      setPaymentStatus("");
-    } else if (tab === "DRAFT") {
-      setStatus("DRAFT");
       setPaymentStatus("");
     } else if (tab === "UNPAID") {
       setStatus("POSTED");
@@ -154,19 +145,7 @@ export function SalesManager({
   async function directPost(row: any) {
     setActingId(row.id);
     try {
-      let postRes = await fetch(`/api/sales/invoices/${row.id}/post`, { method: "POST" });
-      if (!postRes.ok && (row.status === "DRAFT" || row.status === "SUBMITTED")) {
-        if (row.status === "DRAFT") {
-          await fetch(`/api/sales/invoices/${row.id}/submit`, { method: "POST" });
-        }
-        await fetch(`/api/sales/invoices/${row.id}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "Direct Post authorization" }),
-        });
-        postRes = await fetch(`/api/sales/invoices/${row.id}/post`, { method: "POST" });
-      }
-
+      const postRes = await fetch(`/api/sales/invoices/${row.id}/post`, { method: "POST" });
       const body = await postRes.json().catch(() => null);
       if (!postRes.ok) {
         return toast.error(body?.error?.message || "Failed to post sales invoice.");
@@ -185,33 +164,6 @@ export function SalesManager({
     } finally {
       setActingId("");
     }
-  }
-
-  async function act(row: any, action: string, overrideReason?: string) {
-    if (
-      action === "post" &&
-      !window.confirm(
-        `Post ${row.invoiceNumber}? Stock, device custody, COGS, receivable, revenue, and tax will be committed atomically.`
-      )
-    ) {
-      return;
-    }
-    setActingId(row.id);
-    const response = await fetch(`/api/sales/invoices/${row.id}/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(overrideReason ? { reason: overrideReason } : {}),
-    });
-    const body = await response.json().catch(() => null);
-    setActingId("");
-    if (!response.ok) {
-      const msg = body?.error?.message || `${titleCase(action)} failed.`;
-      return toast.error(msg);
-    }
-    toast.success(
-      `${row.invoiceNumber} ${action === "submit" ? "submitted" : action === "approve" ? "approved" : "posted"}.`
-    );
-    void load();
   }
 
   async function cancelDraft() {
@@ -234,11 +186,14 @@ export function SalesManager({
   const metrics = useMemo(() => {
     const count = (states: string[]) =>
       states.reduce((sum, item) => sum + Number(summary?.statuses?.[item]?.count || 0), 0);
+    const drafts = count(["DRAFT"]);
     const unposted = count(["DRAFT", "SUBMITTED", "APPROVED"]);
+    const posted = count(["POSTED"]);
     return {
       total: pagination.total,
+      drafts,
       unposted,
-      posted: count(["POSTED"]),
+      posted,
     };
   }, [pagination.total, summary]);
 
@@ -283,21 +238,23 @@ export function SalesManager({
       </div>
 
       {/* Executive KPI Summary Cards */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+        {/* Card 1: Total Invoices */}
         <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Invoices</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Invoices</span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-blue-50 text-blue-700">
               <ShoppingCart className="h-3.5 w-3.5" />
             </span>
           </div>
           <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{metrics.total}</p>
-          <span className="mt-0.5 block text-[10px] text-slate-400">Total registered</span>
+          <span className="mt-0.5 block text-[10px] text-slate-400">Total registered in ledger</span>
         </div>
 
+        {/* Card 2: Unposted Invoices */}
         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Unposted Invoices</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">Unposted / Drafts</span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-amber-100 text-amber-800">
               <FileClock className="h-3.5 w-3.5" />
             </span>
@@ -306,9 +263,10 @@ export function SalesManager({
           <span className="mt-0.5 block text-[10px] text-amber-700 font-medium">Ready to post directly</span>
         </div>
 
+        {/* Card 3: Posted to GL */}
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Posted</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Posted to GL</span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-100 text-emerald-800">
               <CheckCircle2 className="h-3.5 w-3.5" />
             </span>
@@ -317,6 +275,7 @@ export function SalesManager({
           <span className="mt-0.5 block text-[10px] text-emerald-700 font-medium">Committed to stock + GL</span>
         </div>
 
+        {/* Card 4: Posted Sales Revenue */}
         <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-800">Posted Sales</span>
@@ -330,6 +289,25 @@ export function SalesManager({
           <span className="mt-0.5 block text-[10px] text-indigo-700 font-medium">Recognized revenue</span>
         </div>
 
+        {/* Card 5: Gross Profit */}
+        <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-violet-800">Gross Profit</span>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-100 text-violet-800">
+              <TrendingUp className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-black tabular-nums text-violet-950 truncate" title={formatMoney(summary?.grossProfit || 0, currency)}>
+            {formatMoney(summary?.grossProfit || 0, currency)}
+          </p>
+          <span className="mt-0.5 block text-[10px] text-violet-700 font-medium">
+            {Number(summary?.postedSales || 0) > 0
+              ? `${((Number(summary?.grossProfit || 0) / Number(summary?.postedSales || 1)) * 100).toFixed(1)}% margin (Sales − COGS)`
+              : "Actual cost margin"}
+          </span>
+        </div>
+
+        {/* Card 6: Collected Receipts */}
         <div className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-teal-800">Collected Amount</span>
@@ -340,9 +318,10 @@ export function SalesManager({
           <p className="mt-2 text-xl font-black tabular-nums text-teal-950 truncate" title={formatMoney(summary?.paidTotal || 0, currency)}>
             {formatMoney(summary?.paidTotal || 0, currency)}
           </p>
-          <span className="mt-0.5 block text-[10px] text-teal-700 font-medium">Settled receipts</span>
+          <span className="mt-0.5 block text-[10px] text-teal-700 font-medium">Settled customer receipts</span>
         </div>
 
+        {/* Card 7: Outstanding AR */}
         <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-rose-800">Outstanding AR</span>
@@ -355,6 +334,20 @@ export function SalesManager({
           </p>
           <span className="mt-0.5 block text-[10px] text-rose-700 font-medium">Posted receivable balance</span>
         </div>
+
+        {/* Card 8: Overdue AR */}
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900">Overdue AR</span>
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-amber-100 text-amber-900">
+              <AlertTriangle className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-black tabular-nums text-amber-950 truncate" title={formatMoney(summary?.overdueTotal || 0, currency)}>
+            {formatMoney(summary?.overdueTotal || 0, currency)}
+          </p>
+          <span className="mt-0.5 block text-[10px] text-amber-800 font-medium">Past due credit terms</span>
+        </div>
       </section>
 
       {/* Main Register Section */}
@@ -363,7 +356,7 @@ export function SalesManager({
         <div className="flex border-b border-slate-100 bg-slate-50/50 px-4 pt-2 overflow-x-auto gap-1">
           {[
             { id: "ALL", label: "All Invoices", count: metrics.total },
-            { id: "AWAITING", label: "Unposted Invoices", count: metrics.unposted },
+            { id: "DRAFT", label: "Draft Invoices", count: metrics.unposted },
             { id: "POSTED", label: "Posted to GL", count: metrics.posted },
             { id: "UNPAID", label: "Unpaid / Overdue" },
           ].map((tab) => (
@@ -436,7 +429,7 @@ export function SalesManager({
               className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700"
             >
               <option value="">All Document Statuses</option>
-              {["DRAFT", "SUBMITTED", "APPROVED", "POSTED", "REJECTED", "CANCELLED", "REVERSED"].map((s) => (
+              {["DRAFT", "POSTED", "CANCELLED", "REVERSED"].map((s) => (
                 <option key={s} value={s}>
                   {titleCase(s)}
                 </option>
@@ -449,9 +442,14 @@ export function SalesManager({
               className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700"
             >
               <option value="">All Payment Statuses</option>
-              {["UNPAID", "PARTIAL", "PAID", "OVERDUE"].map((s) => (
-                <option key={s} value={s}>
-                  {titleCase(s)}
+              {[
+                { value: "UNPAID", label: "Unpaid" },
+                { value: "PARTIALLY_PAID", label: "Partially Paid" },
+                { value: "PAID", label: "Paid" },
+                { value: "OVERDUE", label: "Overdue" },
+              ].map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
                 </option>
               ))}
             </select>
@@ -587,21 +585,20 @@ export function SalesManager({
                             View
                           </Link>
 
-                          {/* Edit Action (for unposted documents) */}
-                          {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") &&
-                            can("SALES_INVOICE_CREATE") && (
-                              <Link
-                                href={`/sales/${row.id}/edit`}
-                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition"
-                                title="Edit sales invoice draft"
-                              >
-                                <Edit3 className="h-3 w-3" />
-                                Edit
-                              </Link>
-                            )}
+                          {/* Edit Action (for draft documents) */}
+                          {row.status === "DRAFT" && can("SALES_INVOICE_CREATE") && (
+                            <Link
+                              href={`/sales/${row.id}/edit`}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition"
+                              title="Edit sales invoice draft"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              Edit
+                            </Link>
+                          )}
 
                           {/* Direct Post for any unposted invoice (Draft, Submitted, Approved) */}
-                          {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && can("SALES_INVOICE_CREATE") && (
+                          {(row.status === "DRAFT" || row.status === "SUBMITTED" || row.status === "APPROVED") && can("SALES_INVOICE_POST") && (
                             <Button
                               size="sm"
                               disabled={actingId === row.id}
@@ -781,112 +778,6 @@ export function SalesManager({
                 className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
               >
                 {actingId ? "Cancelling…" : "Confirm cancellation"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Credit Limit Authorization Modal */}
-      {creditOverrideTarget && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-xs"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !actingId) setCreditOverrideTarget(null);
-          }}
-        >
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl animate-scale-up">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                  Credit Limit Authorization Required
-                </div>
-                <h2 className="mt-2 text-lg font-black text-slate-950">Approve with Credit Override</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {creditOverrideTarget.row.invoiceNumber} · Customer:{" "}
-                  <b className="text-slate-800">{creditOverrideTarget.row.customer.name}</b> (
-                  {creditOverrideTarget.row.customer.code})
-                </p>
-              </div>
-              <button
-                disabled={Boolean(actingId)}
-                onClick={() => setCreditOverrideTarget(null)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-              <div>
-                <span className="text-slate-500">Configured Credit Limit:</span>
-                <div className="font-bold text-slate-900">
-                  {formatMoney(
-                    creditOverrideTarget.details?.creditLimit || creditOverrideTarget.row.customer.creditLimit || 0,
-                    currency
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="text-slate-500">Current AR Outstanding:</span>
-                <div className="font-bold text-slate-900">
-                  {formatMoney(creditOverrideTarget.details?.outstanding || 0, currency)}
-                </div>
-              </div>
-              <div>
-                <span className="text-slate-500">Invoice Grand Total:</span>
-                <div className="font-bold text-blue-700">
-                  {formatMoney(
-                    creditOverrideTarget.details?.invoiceTotal || creditOverrideTarget.row.grandTotal,
-                    currency
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="font-semibold text-amber-800">Exceeded Amount:</span>
-                <div className="font-black text-rose-600">
-                  {formatMoney(creditOverrideTarget.details?.exceededAmount || 0, currency)}
-                </div>
-              </div>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="text-xs font-bold text-slate-700">Managerial Override Justification / Reason *</span>
-              <textarea
-                autoFocus
-                rows={3}
-                value={creditOverrideReason}
-                onChange={(e) => setCreditOverrideReason(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                placeholder="e.g. Director authorized 15-day extension; PDC cheque received; VIP dealer account."
-              />
-            </label>
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              This justification will be permanently stamped in the company financial audit trail alongside your user ID.
-            </p>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <Button disabled={Boolean(actingId)} variant="outline" onClick={() => setCreditOverrideTarget(null)}>
-                Cancel
-              </Button>
-              <Button
-                disabled={Boolean(actingId) || creditOverrideReason.trim().length < 5}
-                onClick={async () => {
-                  const target = creditOverrideTarget;
-                  const reason = creditOverrideReason;
-                  const andPost = target.andPost;
-                  setCreditOverrideTarget(null);
-                  if (andPost) {
-                    await directPost(target.row);
-                  } else {
-                    await act(target.row, "approve", reason);
-                  }
-                }}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5"
-              >
-                <BadgeCheck className="h-4 w-4" />
-                {actingId ? "Authorizing…" : "Authorize & Approve Credit"}
               </Button>
             </div>
           </div>

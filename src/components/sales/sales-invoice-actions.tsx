@@ -1,23 +1,15 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
-  BadgeCheck,
   Ban,
-  CheckCircle2,
-  FileCheck2,
   Loader2,
-  PackageCheck,
-  Send,
   X,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/lib/utils";
 
 type Props = {
   invoice: {
@@ -27,7 +19,6 @@ type Props = {
     grandTotal: string | number;
     currencyCode: string;
     preparedById: string;
-    approvedById: string | null;
     customer: {
       id: string;
       code: string;
@@ -39,72 +30,18 @@ type Props = {
   permissions: string[];
 };
 
-export function SalesInvoiceWorkflowActions({ invoice, userId, permissions }: Props) {
+export function SalesInvoiceWorkflowActions({ invoice, permissions }: Props) {
   const router = useRouter();
   const [acting, setActing] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [creditOverrideTarget, setCreditOverrideTarget] = useState<any>(null);
-  const [creditOverrideReason, setCreditOverrideReason] = useState("");
 
   const can = (key: string) => permissions.includes(key);
-
-  async function executeAction(action: string, overrideReason?: string) {
-    if (
-      action === "post" &&
-      !window.confirm(
-        `Post ${invoice.invoiceNumber}? Stock, physical custody, actual COGS, receivable, and general ledger journal will be committed atomically.`
-      )
-    ) {
-      return;
-    }
-
-    setActing(true);
-    try {
-      const response = await fetch(`/api/sales/invoices/${invoice.id}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(overrideReason ? { reason: overrideReason } : {}),
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        if (body?.error?.code === "CREDIT_LIMIT_EXCEEDED") {
-          setCreditOverrideTarget({ details: body.error.details });
-          setCreditOverrideReason(`Authorized credit extension for invoice ${invoice.invoiceNumber}`);
-          return;
-        }
-        const msg = body?.error?.message || `${action} failed.`;
-        return toast.error(msg);
-      }
-      toast.success(
-        `${invoice.invoiceNumber} ${
-          action === "submit" ? "submitted" : action === "approve" ? "approved" : "posted to stock & GL"
-        }!`
-      );
-      router.refresh();
-    } catch {
-      toast.error(`Network error while trying to ${action} invoice.`);
-    } finally {
-      setActing(false);
-    }
-  }
 
   async function directPost() {
     setActing(true);
     try {
-      let postRes = await fetch(`/api/sales/invoices/${invoice.id}/post`, { method: "POST" });
-      if (!postRes.ok && (invoice.status === "DRAFT" || invoice.status === "SUBMITTED")) {
-        if (invoice.status === "DRAFT") {
-          await fetch(`/api/sales/invoices/${invoice.id}/submit`, { method: "POST" });
-        }
-        await fetch(`/api/sales/invoices/${invoice.id}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "Direct Post authorization" }),
-        });
-        postRes = await fetch(`/api/sales/invoices/${invoice.id}/post`, { method: "POST" });
-      }
-
+      const postRes = await fetch(`/api/sales/invoices/${invoice.id}/post`, { method: "POST" });
       const body = await postRes.json().catch(() => null);
       if (!postRes.ok) {
         return toast.error(body?.error?.message || "Failed to post sales invoice.");
@@ -231,102 +168,6 @@ export function SalesInvoiceWorkflowActions({ invoice, userId, permissions }: Pr
           </div>
         </div>
       )}
-
-      {/* CREDIT LIMIT OVERRIDE MODAL */}
-      {creditOverrideTarget && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-xs"
-          onMouseDown={(e) => e.target === e.currentTarget && !acting && setCreditOverrideTarget(null)}
-        >
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl animate-scale-up">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                  Credit Limit Authorization Required
-                </div>
-                <h2 className="mt-2 text-lg font-black text-slate-950">Approve with Credit Override</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {invoice.invoiceNumber} · Customer: <b className="text-slate-800">{invoice.customer.name}</b> ({invoice.customer.code})
-                </p>
-              </div>
-              <button
-                disabled={acting}
-                onClick={() => setCreditOverrideTarget(null)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-              <div>
-                <span className="text-slate-500">Configured Credit Limit:</span>
-                <div className="font-bold text-slate-900">
-                  {formatMoney(creditOverrideTarget.details?.creditLimit || invoice.customer.creditLimit || 0, invoice.currencyCode)}
-                </div>
-              </div>
-              <div>
-                <span className="text-slate-500">Current AR Outstanding:</span>
-                <div className="font-bold text-slate-900">
-                  {formatMoney(creditOverrideTarget.details?.outstanding || 0, invoice.currencyCode)}
-                </div>
-              </div>
-              <div>
-                <span className="text-slate-500">Invoice Grand Total:</span>
-                <div className="font-bold text-blue-700">
-                  {formatMoney(creditOverrideTarget.details?.invoiceTotal || invoice.grandTotal, invoice.currencyCode)}
-                </div>
-              </div>
-              <div>
-                <span className="font-semibold text-amber-800">Exceeded Amount:</span>
-                <div className="font-black text-rose-600">
-                  {formatMoney(creditOverrideTarget.details?.exceededAmount || 0, invoice.currencyCode)}
-                </div>
-              </div>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="text-xs font-bold text-slate-700">Managerial Override Justification / Reason *</span>
-              <textarea
-                autoFocus
-                rows={3}
-                value={creditOverrideReason}
-                onChange={(e) => setCreditOverrideReason(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                placeholder="e.g. Director authorized 15-day extension; PDC cheque received; VIP dealer account."
-              />
-            </label>
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              This justification will be permanently stamped in the company financial audit trail alongside your user ID.
-            </p>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <Button disabled={acting} variant="outline" onClick={() => setCreditOverrideTarget(null)}>
-                Cancel
-              </Button>
-              <Button
-                disabled={acting || creditOverrideReason.trim().length < 5}
-                onClick={async () => {
-                  const reason = creditOverrideReason;
-                  const andPost = creditOverrideTarget.andPost;
-                  setCreditOverrideTarget(null);
-                  if (andPost) {
-                    await directPost();
-                  } else {
-                    await executeAction("approve", reason);
-                  }
-                }}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5"
-              >
-                <BadgeCheck className="h-4 w-4" />
-                {acting ? "Authorizing…" : "Authorize & Approve Credit"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
-

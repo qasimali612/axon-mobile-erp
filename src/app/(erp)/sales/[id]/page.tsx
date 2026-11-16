@@ -14,8 +14,8 @@ type PageProps = { params: Promise<{ id: string }> };
 
 function statusTone(status: string) {
   if (status === "POSTED") return "green" as const;
-  if (["APPROVED", "SUBMITTED"].includes(status)) return "amber" as const;
-  if (["REVERSED", "CANCELLED", "REJECTED"].includes(status)) return "red" as const;
+  if (status === "DRAFT") return "slate" as const;
+  if (["REVERSED", "CANCELLED"].includes(status)) return "red" as const;
   return "slate" as const;
 }
 
@@ -89,8 +89,7 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
   const postedAllocations = invoice.allocations.filter((item) => item.payment.status === OperationalDocumentStatus.POSTED);
   const unavailableUnits = invoice.lines.flatMap((line) => line.units).filter((link) => link.stockUnit.status !== "SOLD").length;
   const roleAllowsReversal = scopedPermission(context, "SALES_INVOICE_REVERSE", invoice.branchId, invoice.warehouseId);
-  const separated = context.user.id !== invoice.preparedById && context.user.id !== invoice.approvedById && context.user.id !== invoice.postedById;
-  const canReverse = invoice.status === OperationalDocumentStatus.POSTED && !invoice.reversalOfId && roleAllowsReversal && separated;
+  const canReverse = invoice.status === OperationalDocumentStatus.POSTED && !invoice.reversalOfId && roleAllowsReversal;
   const disabledReason = postedAllocations.length
     ? "Posted customer allocations must be reversed or refunded first."
     : activeReturns.length
@@ -112,7 +111,6 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
             grandTotal: invoice.grandTotal.toString(),
             currencyCode: invoice.currencyCode,
             preparedById: invoice.preparedById,
-            approvedById: invoice.approvedById,
             customer: {
               id: invoice.customer.id,
               code: invoice.customer.code,
@@ -123,7 +121,7 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
           userId={context.user.id}
           permissions={context.permissions}
         />
-        {invoice.status !== OperationalDocumentStatus.POSTED && invoice.status !== OperationalDocumentStatus.REVERSED && invoice.status !== OperationalDocumentStatus.CANCELLED && (
+        {invoice.status === OperationalDocumentStatus.DRAFT && (
           <Link
             href={`/sales/${invoice.id}/edit`}
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 transition"
@@ -180,7 +178,7 @@ export default async function SalesInvoiceDetailPage({ params }: PageProps) {
 
     <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
       <section className="surface overflow-hidden"><div className="border-b px-5 py-4"><h2 className="font-black">Linked finance & stock history</h2></div><div className="grid gap-4 p-5 md:grid-cols-2"><div><p className="label">Accounting voucher</p>{invoice.journalEntry ? <Link href={`/finance/journals/${invoice.journalEntry.id}`} className="mt-1 inline-flex items-center gap-1 font-bold text-blue-700">{invoice.journalEntry.voucherNumber}<ExternalLink className="h-3 w-3"/></Link> : <p className="mt-1 text-sm text-slate-400">Not posted</p>}<p className="mt-1 text-xs text-slate-500">{invoice.journalEntry ? `${titleCase(invoice.journalEntry.status)} · ${formatDate(invoice.journalEntry.postingDate)}` : ""}</p></div><div><p className="label">Stock movements</p><p className="mt-1 text-sm font-bold">{movements.length} append-only entries</p><p className="mt-1 text-xs text-slate-500">{movements.map((item) => titleCase(item.movementType)).join(", ") || "No stock effects"}</p></div></div><div className="border-t px-5 py-4"><h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Payments & returns</h3>{!invoice.allocations.length && !invoice.stockReturns.length ? <p className="mt-3 text-sm text-slate-400">No linked payments or returns.</p> : <div className="mt-3 space-y-2">{invoice.allocations.map((item) => <div key={item.id} className="flex justify-between rounded-lg border p-3 text-xs"><span><b>{item.payment.paymentNumber}</b> · {titleCase(item.payment.direction)} · {titleCase(item.payment.status)}</span><b>{formatMoney(item.amount.toString(), invoice.currencyCode)}</b></div>)}{invoice.stockReturns.map((item) => <div key={item.id} className="flex justify-between rounded-lg border p-3 text-xs"><span><b>{item.returnNumber}</b> · {titleCase(item.status)} · {formatDate(item.returnDate)}</span><b>{formatMoney(item.grandTotal.toString(), invoice.currencyCode)}</b></div>)}</div>}</div></section>
-      <section className="surface overflow-hidden"><div className="border-b px-5 py-4"><h2 className="font-black">Workflow & audit timeline</h2></div><div className="border-b p-5 text-xs"><dl className="grid grid-cols-2 gap-y-2"><dt className="text-slate-500">Prepared by</dt><dd className="text-right font-bold">{invoice.preparedBy.fullName}</dd><dt className="text-slate-500">Approved by</dt><dd className="text-right font-bold">{invoice.approvedBy?.fullName || "—"}</dd><dt className="text-slate-500">Posted by</dt><dd className="text-right font-bold">{invoice.postedBy?.fullName || "—"}</dd>{invoice.reversedBy && <><dt className="text-slate-500">Reversed by</dt><dd className="text-right font-bold">{invoice.reversedBy.fullName}</dd></>}</dl>{invoice.reversalReason && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-900"><b>Reversal reason:</b> {invoice.reversalReason}</p>}</div><ol className="max-h-[430px] divide-y overflow-auto">{history.map((item) => <li key={item.id} className="flex gap-3 px-5 py-3"><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.outcome === "SUCCESS" ? "bg-blue-600" : "bg-rose-500"}`}/><div><p className="text-xs font-bold">{titleCase(item.action)}</p><p className="mt-0.5 text-[10px] text-slate-500">{item.actor?.fullName || "System"} · {formatDate(item.createdAt, true)}</p></div></li>)}{!history.length && <li className="p-5 text-sm text-slate-400">No audit events recorded.</li>}</ol></section>
+      <section className="surface overflow-hidden"><div className="border-b px-5 py-4"><h2 className="font-black">Workflow & audit timeline</h2></div><div className="border-b p-5 text-xs"><dl className="grid grid-cols-2 gap-y-2"><dt className="text-slate-500">Prepared by</dt><dd className="text-right font-bold">{invoice.preparedBy.fullName}</dd><dt className="text-slate-500">Posted by</dt><dd className="text-right font-bold">{invoice.postedBy?.fullName || "—"}</dd>{invoice.reversedBy && <><dt className="text-slate-500">Reversed by</dt><dd className="text-right font-bold">{invoice.reversedBy.fullName}</dd></>}</dl>{invoice.reversalReason && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-900"><b>Reversal reason:</b> {invoice.reversalReason}</p>}</div><ol className="max-h-[430px] divide-y overflow-auto">{history.map((item) => <li key={item.id} className="flex gap-3 px-5 py-3"><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.outcome === "SUCCESS" ? "bg-blue-600" : "bg-rose-500"}`}/><div><p className="text-xs font-bold">{titleCase(item.action)}</p><p className="mt-0.5 text-[10px] text-slate-500">{item.actor?.fullName || "System"} · {formatDate(item.createdAt, true)}</p></div></li>)}{!history.length && <li className="p-5 text-sm text-slate-400">No audit events recorded.</li>}</ol></section>
     </div>
 
     {invoice.notes && <section className="surface p-5"><div className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-400"/><h2 className="font-black">Notes</h2></div><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">{invoice.notes}</p></section>}

@@ -9,7 +9,7 @@ import {
 } from "@prisma/client";
 import { ApiError } from "@/lib/api";
 import { appendAudit } from "@/lib/audit";
-import { nextDocumentNumber } from "@/lib/document-sequence";
+import { formatDocumentPrefix, nextDocumentNumber } from "@/lib/document-sequence";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
 import { isSingleUserMode } from "@/lib/operating-mode";
 
@@ -102,14 +102,13 @@ export async function allocateOperationalNumber(
     }),
   ]);
   if (!branch) throw new ApiError(404, "BRANCH_NOT_FOUND", "The selected branch is not available.");
-  const cleanBranch = (branch.documentPrefix || "BR").trim().replace(/-+$/, "");
-  const cleanSuffix = (input.suffix || "DOC").trim().replace(/^-+/, "");
+  const prefix = formatDocumentPrefix(branch.documentPrefix, input.suffix);
   const number = await nextDocumentNumber(tx, {
     companyId: input.companyId,
     branchId: input.branchId,
     documentType: input.documentType,
     fiscalYear: period.fiscalYear.code,
-    prefix: `${cleanBranch}-${cleanSuffix}`,
+    prefix,
   });
   return { number, period };
 }

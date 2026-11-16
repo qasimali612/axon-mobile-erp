@@ -183,6 +183,8 @@ model Company {
   reportSchedules       ReportSchedule[]
   boms                  Bom[]
   productionOrders      ProductionOrder[]
+  posTerminals          PosTerminal[]
+  posShifts             PosShift[]
 
   @@index([status])
 }
@@ -275,6 +277,7 @@ model User {
   paymentsApproved              Payment[]                   @relation("PaymentApprover")
   paymentsPosted                Payment[]                   @relation("PaymentPoster")
   paymentsReversed              Payment[]                   @relation("PaymentReverser")
+  cashierShifts                 PosShift[]                  @relation("CashierShifts")
 
   @@index([status])
   @@index([lastLoginAt])
@@ -453,6 +456,8 @@ model Branch {
   stockAdjustments       StockAdjustment[]
   stockCounts            StockCount[]
   payments               Payment[]
+  posTerminals           PosTerminal[]
+  posShifts              PosShift[]
 
   @@unique([companyId, code])
   @@unique([companyId, documentPrefix])
@@ -1110,6 +1115,7 @@ model Account {
   openingBalanceLines         OpeningBalanceLine[]
   payments                    Payment[]            @relation("PaymentAccount")
   paymentMethods              PaymentMethod[]      @relation("PaymentMethodCashAccount")
+  terminalCashAccounts        PosTerminal[]        @relation("TerminalDefaultCashAccount")
 
   @@unique([companyId, code])
   @@index([companyId, accountClass, isActive])
@@ -2906,6 +2912,8 @@ model SalesInvoice {
   postedAt       DateTime?                 @db.Timestamptz(3)
   reversedAt     DateTime?                 @db.Timestamptz(3)
   reversalReason String?                   @db.Text
+  terminalId     String?                   @db.Uuid
+  shiftId        String?                   @db.Uuid
   createdAt      DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -2914,6 +2922,8 @@ model SalesInvoice {
   warehouse    Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
   customer     Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   salesperson  User?               @relation("SalesInvoiceSalesperson", fields: [salespersonId], references: [id], onDelete: Restrict)
+  terminal     PosTerminal?        @relation(fields: [terminalId], references: [id], onDelete: SetNull)
+  shift        PosShift?           @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   priceList    PriceList?          @relation(fields: [priceListId], references: [id], onDelete: Restrict)
   journalEntry JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   reversalOf   SalesInvoice?       @relation("SalesInvoiceReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
@@ -3097,6 +3107,8 @@ model Payment {
   postedAt        DateTime?                 @db.Timestamptz(3)
   reversedAt      DateTime?                 @db.Timestamptz(3)
   reversalReason  String?                   @db.Text
+  terminalId      String?                   @db.Uuid
+  shiftId         String?                   @db.Uuid
   createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -3104,6 +3116,8 @@ model Payment {
   branch        Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
   customer      Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
   supplier      Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  terminal      PosTerminal?        @relation(fields: [terminalId], references: [id], onDelete: SetNull)
+  shift         PosShift?           @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   bankAccount   BankAccount?        @relation("PaymentBankAccount", fields: [bankAccountId], references: [id], onDelete: Restrict)
   cashAccount   Account?            @relation("PaymentAccount", fields: [cashAccountId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod?      @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
@@ -3430,3 +3444,66 @@ model ProductionOrderUnit {
 
   @@index([productionOrderId])
 }
+
+model PosTerminal {
+  id                    String              @id @default(uuid()) @db.Uuid
+  companyId             String              @db.Uuid
+  branchId              String              @db.Uuid
+  code                  String              @db.VarChar(32)
+  name                  String              @db.VarChar(128)
+  defaultCashAccountId  String?             @db.Uuid
+  receiptPrinterType    ReceiptPrinterType  @default(THERMAL_80MM)
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  company               Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch                Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  defaultCashAccount    Account?            @relation("TerminalDefaultCashAccount", fields: [defaultCashAccountId], references: [id], onDelete: SetNull)
+  shifts                PosShift[]
+  invoices              SalesInvoice[]
+  payments              Payment[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId, isActive])
+}
+
+enum ReceiptPrinterType {
+  THERMAL_80MM
+  THERMAL_58MM
+  A4
+}
+
+model PosShift {
+  id                  String          @id @default(uuid()) @db.Uuid
+  companyId           String          @db.Uuid
+  branchId            String          @db.Uuid
+  terminalId          String          @db.Uuid
+  cashierId           String          @db.Uuid
+  status              PosShiftStatus  @default(OPEN)
+  openedAt            DateTime        @default(now())
+  closedAt            DateTime?
+  openingFloat        Decimal         @default(0) @db.Decimal(19, 4)
+  closingActualCash   Decimal?        @db.Decimal(19, 4)
+  closingExpectedCash Decimal?        @db.Decimal(19, 4)
+  cashDifference      Decimal?        @db.Decimal(19, 4)
+  notes               String?         @db.Text
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch              Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  terminal            PosTerminal     @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  cashier             User            @relation("CashierShifts", fields: [cashierId], references: [id], onDelete: Restrict)
+  invoices            SalesInvoice[]
+  payments            Payment[]
+
+  @@index([companyId, terminalId, status])
+  @@index([companyId, cashierId, status])
+}
+
+enum PosShiftStatus {
+  OPEN
+  CLOSED
+}
+

@@ -4,9 +4,7 @@ import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { approvePurchaseOrder, approvePurchaseReceipt } from "@/lib/operations/purchase";
-import { approveSalesInvoice } from "@/lib/operations/sales";
 import { approveStockTransfer } from "@/lib/operations/stock-transfer";
-import { approvePayment } from "@/lib/operations/payments";
 import { approveJournal } from "@/lib/finance/posting";
 import { approveBudget } from "@/lib/finance/budgets";
 import { approveIncentive } from "@/lib/finance/incentives";
@@ -16,10 +14,8 @@ const actionSchema = z.object({
   documentType: z.enum([
     "PURCHASE_ORDER",
     "PURCHASE_RECEIPT",
-    "SALES_INVOICE",
     "STOCK_TRANSFER",
     "STOCK_ADJUSTMENT",
-    "PAYMENT",
     "JOURNAL",
     "BUDGET",
     "INCENTIVE",
@@ -30,7 +26,7 @@ const actionSchema = z.object({
   reason: z.string().optional().default(""),
 });
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const context = await requireAuth();
     const companyId = context.company.id;
@@ -38,10 +34,8 @@ export async function GET(request: Request) {
     const [
       purchaseOrders,
       purchaseReceipts,
-      salesInvoices,
       stockTransfers,
       stockAdjustments,
-      payments,
       journals,
       budgets,
     ] = await Promise.all([
@@ -67,17 +61,6 @@ export async function GET(request: Request) {
         orderBy: { receiptDate: "desc" },
       }),
 
-      // Sales Invoices
-      prisma.salesInvoice.findMany({
-        where: { companyId, status: "SUBMITTED" },
-        include: {
-          branch: { select: { name: true } },
-          customer: { select: { name: true } },
-          preparedBy: { select: { id: true, fullName: true, email: true } },
-        },
-        orderBy: { invoiceDate: "desc" },
-      }),
-
       // Stock Transfers
       prisma.stockTransfer.findMany({
         where: { companyId, status: "SUBMITTED" },
@@ -97,18 +80,6 @@ export async function GET(request: Request) {
           preparedBy: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { adjustmentDate: "desc" },
-      }),
-
-      // Payments
-      prisma.payment.findMany({
-        where: { companyId, status: "SUBMITTED" },
-        include: {
-          branch: { select: { name: true } },
-          customer: { select: { name: true } },
-          supplier: { select: { name: true } },
-          preparedBy: { select: { id: true, fullName: true, email: true } },
-        },
-        orderBy: { paymentDate: "desc" },
       }),
 
       // Journals / Expenses
@@ -165,21 +136,6 @@ export async function GET(request: Request) {
         createdAt: gr.createdAt.toISOString(),
       })),
 
-      ...salesInvoices.map((inv) => ({
-        id: inv.id,
-        documentType: "SALES_INVOICE" as const,
-        documentNumber: inv.invoiceNumber,
-        documentDate: inv.invoiceDate.toISOString().slice(0, 10),
-        domain: "Sales" as const,
-        branch: inv.branch.name,
-        counterparty: inv.customer.name,
-        summary: `Sales invoice to ${inv.customer.name}`,
-        amount: inv.grandTotal.toString(),
-        preparer: inv.preparedBy,
-        viewUrl: `/sales/${inv.id}`,
-        createdAt: inv.createdAt.toISOString(),
-      })),
-
       ...stockTransfers.map((st) => ({
         id: st.id,
         documentType: "STOCK_TRANSFER" as const,
@@ -210,20 +166,6 @@ export async function GET(request: Request) {
         createdAt: sa.createdAt.toISOString(),
       })),
 
-      ...payments.map((p) => ({
-        id: p.id,
-        documentType: "PAYMENT" as const,
-        documentNumber: p.paymentNumber,
-        documentDate: p.paymentDate.toISOString().slice(0, 10),
-        domain: "Finance" as const,
-        branch: p.branch.name,
-        counterparty: p.customer?.name || p.supplier?.name || "Direct Party",
-        summary: `${p.direction.replace("_", " ")}: ${p.customer?.name || p.supplier?.name || ""}`,
-        amount: p.amount.toString(),
-        preparer: p.preparedBy,
-        viewUrl: `/finance/payments`,
-        createdAt: p.createdAt.toISOString(),
-      })),
 
       ...journals.map((j) => ({
         id: j.id,
@@ -262,7 +204,7 @@ export async function GET(request: Request) {
     const counts = {
       total: items.length,
       procurement: items.filter((i) => i.domain === "Procurement").length,
-      sales: items.filter((i) => i.domain === "Sales").length,
+      sales: 0,
       inventory: items.filter((i) => i.domain === "Inventory").length,
       finance: items.filter((i) => i.domain === "Finance").length,
     };
@@ -302,14 +244,8 @@ export async function POST(request: Request) {
         case "PURCHASE_RECEIPT":
           result = await approvePurchaseReceipt(actor, parsed.id);
           break;
-        case "SALES_INVOICE":
-          result = await approveSalesInvoice(actor, parsed.id);
-          break;
         case "STOCK_TRANSFER":
           result = await approveStockTransfer(actor, parsed.id);
-          break;
-        case "PAYMENT":
-          result = await approvePayment(actor, parsed.id);
           break;
         case "JOURNAL":
           result = await approveJournal(actor, parsed.id);
@@ -341,12 +277,6 @@ export async function POST(request: Request) {
             data: { status: "REJECTED" },
           });
           break;
-        case "SALES_INVOICE":
-          result = await prisma.salesInvoice.update({
-            where: { id: parsed.id, companyId: actor.companyId },
-            data: { status: "DRAFT" },
-          });
-          break;
         case "STOCK_TRANSFER":
           result = await prisma.stockTransfer.update({
             where: { id: parsed.id, companyId: actor.companyId },
@@ -357,12 +287,6 @@ export async function POST(request: Request) {
           result = await prisma.stockAdjustment.update({
             where: { id: parsed.id, companyId: actor.companyId },
             data: { status: "CANCELLED" },
-          });
-          break;
-        case "PAYMENT":
-          result = await prisma.payment.update({
-            where: { id: parsed.id, companyId: actor.companyId },
-            data: { status: "REJECTED" },
           });
           break;
         case "JOURNAL":

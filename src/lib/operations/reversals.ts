@@ -95,8 +95,8 @@ export async function reversePostedSalesInvoice(actor: OperationalActor, id: str
     if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
     if (invoice.reversalOfId) throw new ApiError(409, "REVERSAL_DOCUMENT_NOT_REVERSIBLE", "A reversal invoice cannot itself be reversed through this workflow.");
     if (invoice.status === OperationalDocumentStatus.REVERSED && invoice.reversals[0]) return invoice.reversals[0];
-    if (invoice.status !== OperationalDocumentStatus.POSTED || !invoice.journalEntryId || !invoice.approvedById) {
-      throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a posted sales invoice with complete approval and journal history can be reversed.");
+    if (invoice.status !== OperationalDocumentStatus.POSTED || !invoice.journalEntryId || (!invoice.approvedById && !invoice.postedById)) {
+      throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a posted sales invoice with complete journal history can be reversed.");
     }
     await assertSegregationOfDuties(tx, actor.companyId, actor.userId, invoice.preparedById, invoice.approvedById, "reverse this sales invoice", [invoice.postedById]);
 
@@ -212,12 +212,6 @@ export async function reversePostedSalesInvoice(actor: OperationalActor, id: str
       });
       reversalLineByOriginal.set(line.id, reversalLine.id);
     }
-    const approvedAt = new Date();
-    await tx.salesInvoice.update({ where: { id: reversal.id }, data: { status: OperationalDocumentStatus.SUBMITTED } });
-    await tx.salesInvoice.update({
-      where: { id: reversal.id },
-      data: { status: OperationalDocumentStatus.APPROVED, approvedById: invoice.approvedById, approvedAt },
-    });
 
     const reversalJournal = await reverseOperationalJournal(tx, {
       actor,
@@ -668,3 +662,6 @@ export async function reversePostedPurchaseReceipt(actor: OperationalActor, id: 
     return postedReversal;
   }, transactionOptions);
 }
+
+export { reversePayment } from "@/lib/operations/payments";
+

@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
-import { apiError, ApiError, assertSameOrigin } from "@/lib/api";
-import { requireAuth, requirePermission } from "@/lib/auth";
-import { approvePayment } from "@/lib/operations/payments";
-import { prisma } from "@/lib/prisma";
-import { jsonSafe } from "@/lib/serializers";
-import { idSchema } from "@/lib/validation";
+import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
+import { requireAuth } from "@/lib/auth";
+
 type RouteContext = { params: Promise<{ id: string }> };
-export async function POST(request: Request, { params }: RouteContext) { try { assertSameOrigin(request); const base = await requireAuth(); const id = idSchema.parse((await params).id); const record = await prisma.payment.findFirst({ where: { id, companyId: base.company.id }, select: { branchId: true } }); if (!record) throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment was not found."); const context = await requirePermission("PAYMENT_APPROVE", record); const data = await approvePayment({ companyId: context.company.id, userId: context.user.id, currencyCode: context.company.currencyCode }, id); return NextResponse.json(jsonSafe({ data })); } catch (error) { return apiError(error); } }
+
+export async function POST(request: Request, { params }: RouteContext) {
+  try {
+    assertSameOrigin(request);
+    await requireAuth();
+    await params;
+    throw new ApiError(
+      410,
+      "APPROVAL_WORKFLOW_ELIMINATED",
+      "Payment approval workflow has been eliminated. Vouchers must be posted directly via /api/payments/[id]/post.",
+    );
+  } catch (error) {
+    return apiError(error);
+  }
+}

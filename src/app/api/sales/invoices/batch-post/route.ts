@@ -3,7 +3,7 @@ import { OperationalDocumentStatus } from "@prisma/client";
 import { apiError, assertSameOrigin } from "@/lib/api";
 import { requirePermission } from "@/lib/auth";
 import { isSingleUserMode } from "@/lib/operating-mode";
-import { approveSalesInvoice, postSalesInvoice, submitSalesInvoice } from "@/lib/operations/sales";
+import { postSalesInvoice } from "@/lib/operations/sales";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 

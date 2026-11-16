@@ -4,16 +4,14 @@ import { ApiError, apiError, assertSameOrigin, parsePagination } from "@/lib/api
 import { permittedDocumentScopes, requirePermission } from "@/lib/auth";
 import { shouldAutoPost } from "@/lib/operating-mode";
 import {
-  approveSalesInvoice,
   createSalesInvoiceDraft,
   postSalesInvoice,
-  submitSalesInvoice,
 } from "@/lib/operations/sales";
 import { salesInvoiceDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
 
-const PAYMENT_FILTERS = new Set(["UNPAID", "PARTIAL", "PAID", "OVERDUE"]);
+const PAYMENT_FILTERS = new Set(["UNPAID", "PARTIAL", "PARTIALLY_PAID", "PAID", "OVERDUE"]);
 
 function dateBoundary(value: string | null, end = false) {
   if (!value) return undefined;
@@ -120,7 +118,13 @@ export async function GET(request: Request) {
       return [invoice.id, { paid, outstanding, status: invoice.status, paymentStatus: invoicePaymentStatus(invoice.grandTotal, paid, invoice.dueDate, today) }];
     }));
     const paymentMatchedIds = paymentStatus
-      ? financialRows.filter((invoice) => financials.get(invoice.id)?.paymentStatus === paymentStatus).map((invoice) => invoice.id)
+      ? financialRows
+          .filter((invoice) => {
+            const pStatus = financials.get(invoice.id)?.paymentStatus;
+            const target = paymentStatus === "PARTIALLY_PAID" ? "PARTIAL" : paymentStatus;
+            return pStatus === target;
+          })
+          .map((invoice) => invoice.id)
       : undefined;
     const where: Prisma.SalesInvoiceWhereInput = {
       ...baseWhere,
@@ -171,14 +175,19 @@ export async function GET(request: Request) {
         ...invoice,
         paidAmount,
         outstandingAmount,
-        paymentStatus: isPosted
-          ? invoicePaymentStatus(invoice.grandTotal, paidAmount, invoice.dueDate, today)
-          : "DRAFT",
+        paymentStatus: invoicePaymentStatus(invoice.grandTotal, paidAmount, invoice.dueDate, today),
       };
     });
     const postedFinancials = [...financials.values()].filter((item) => item.status === OperationalDocumentStatus.POSTED);
     const paidTotal = postedFinancials.reduce((sum, item) => sum.plus(item.paid), new Prisma.Decimal(0));
     const outstandingTotal = postedFinancials.reduce((sum, item) => sum.plus(item.outstanding), new Prisma.Decimal(0));
+    const overdueTotal = postedFinancials
+      .filter((item) => item.paymentStatus === "OVERDUE")
+      .reduce((sum, item) => sum.plus(item.outstanding), new Prisma.Decimal(0));
+    const postedSalesDecimal = new Prisma.Decimal(totals._sum.grandTotal || 0);
+    const costTotalDecimal = new Prisma.Decimal(totals._sum.costTotal || 0);
+    const grossProfit = postedSalesDecimal.minus(costTotalDecimal);
+
     const paymentStatuses = postedFinancials.reduce<Record<string, number>>((acc, item) => {
       acc[item.paymentStatus] = (acc[item.paymentStatus] || 0) + 1;
       return acc;
@@ -197,6 +206,8 @@ export async function GET(request: Request) {
         quantity: quantityTotals._sum.quantity || 0,
         paidTotal,
         outstandingTotal,
+        overdueTotal,
+        grossProfit,
         paymentStatuses,
         statuses: Object.fromEntries(statuses.map((item) => [item.status, { count: item._count, value: item._sum.grandTotal || 0 }])),
       },
@@ -215,12 +226,10 @@ export async function POST(request: Request) {
     const willAutoPost = await shouldAutoPost(prisma, context.company.id, body.autoPost);
     if (willAutoPost) {
       try {
-        await submitSalesInvoice(actor, invoice.id);
-        await approveSalesInvoice({ ...actor, overrideReason: "Single-user auto-post approval" }, invoice.id);
         const posted = await postSalesInvoice(actor, invoice.id);
         return NextResponse.json(jsonSafe({ data: posted }), { status: 201 });
       } catch (autoErr) {
-        console.warn("Sales invoice auto-post deferred to draft:", autoErr);
+        console.warn("Sales invoice direct post deferred to draft:", autoErr);
         return NextResponse.json(
           jsonSafe({
             data: invoice,

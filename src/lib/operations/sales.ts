@@ -11,8 +11,8 @@ import {
 import type { z } from "zod";
 import { ApiError } from "@/lib/api";
 import { appendAudit } from "@/lib/audit";
-import { assertApprovalPolicy, assertCreditOverrideAllowed, assertDiscountCap } from "@/lib/policies";
-import { assertMakerChecker, assertSegregationOfDuties, isSingleUserMode } from "@/lib/operating-mode";
+import { assertCreditOverrideAllowed, assertDiscountCap } from "@/lib/policies";
+import { isSingleUserMode } from "@/lib/operating-mode";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
 import { ensureSingleUserDatabase, prisma } from "@/lib/prisma";
 import {
@@ -264,7 +264,6 @@ export async function updateSalesInvoiceDraft(actor: SalesActor, id: string, inp
       const canEdit =
         current.preparedById === actor.userId ||
         !actor.permissions ||
-        actor.permissions.includes("SALES_INVOICE_APPROVE") ||
         actor.permissions.includes("SALES_INVOICE_CREATE") ||
         actor.permissions.includes("SALES_INVOICE_POST") ||
         actor.permissions.includes("sales.manage");
@@ -358,8 +357,8 @@ export async function cancelSalesInvoiceDraft(actor: SalesActor, id: string, rea
     const canCancel =
       invoice.preparedById === actor.userId ||
       !actor.permissions ||
-      actor.permissions.includes("SALES_INVOICE_APPROVE") ||
       actor.permissions.includes("SALES_INVOICE_CREATE") ||
+      actor.permissions.includes("SALES_INVOICE_POST") ||
       actor.permissions.includes("sales.manage");
     if (!canCancel) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may cancel this draft sales invoice.");
     const updated = await tx.salesInvoice.update({ where: { id }, data: { status: OperationalDocumentStatus.CANCELLED, reversalReason: reason } });
@@ -381,90 +380,79 @@ export async function cancelSalesInvoiceDraft(actor: SalesActor, id: string, rea
   });
 }
 
+/**
+ * @deprecated Approval workflows have been eliminated for Sales Invoices.
+ * Sales invoices post directly from DRAFT to POSTED via `postSalesInvoice`.
+ * For backward compatibility, this method delegates directly to `postSalesInvoice`.
+ */
 export async function submitSalesInvoice(actor: SalesActor, id: string) {
-  return prisma.$transaction(async (tx) => {
-    const invoice = await lockSalesInvoice(tx, id, actor.companyId);
-    if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
-    if (invoice.status === OperationalDocumentStatus.SUBMITTED) {
-      return invoice;
-    }
-    const canSubmit =
-      invoice.preparedById === actor.userId ||
-      !actor.permissions ||
-      actor.permissions.includes("SALES_INVOICE_APPROVE") ||
-      actor.permissions.includes("SALES_INVOICE_CREATE") ||
-      actor.permissions.includes("sales.manage");
-    if (!canSubmit) throw new ApiError(403, "NOT_PREPARER", "Only the preparer or authorized staff may submit this invoice.");
-    if (invoice.status !== OperationalDocumentStatus.DRAFT) throw new ApiError(409, "INVALID_DOCUMENT_STATE", "Only a draft invoice can be submitted.");
-    await assertDiscountCap(tx, { actor, subtotal: invoice.subtotal, discountTotal: invoice.discountTotal, entityId: id, reference: invoice.invoiceNumber });
-    await assertApprovalPolicy(tx, { actor, documentType: "SALES_INVOICE", amount: invoice.grandTotal, entityType: "SalesInvoice", entityId: id, reference: invoice.invoiceNumber });
-    const updated = await tx.salesInvoice.update({ where: { id }, data: { status: OperationalDocumentStatus.SUBMITTED } });
-    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: invoice.branchId, warehouseId: invoice.warehouseId, action: "SALES_INVOICE_SUBMITTED", module: "sales", entityType: "SalesInvoice", entityId: id, entityReference: invoice.invoiceNumber, previousValues: { status: invoice.status }, newValues: { status: updated.status } }, tx);
-    return updated;
-  });
+  return postSalesInvoice(actor, id);
 }
 
+/**
+ * @deprecated Approval workflows have been eliminated for Sales Invoices.
+ * Sales invoices post directly from DRAFT to POSTED via `postSalesInvoice`.
+ * For backward compatibility, this method delegates directly to `postSalesInvoice`.
+ */
 export async function approveSalesInvoice(actor: SalesActor, id: string) {
-  return prisma.$transaction(async (tx) => {
-    await ensureSingleUserDatabase(tx as any);
-    const invoice = await lockSalesInvoice(tx, id, actor.companyId);
-    if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
-    if (invoice.status === OperationalDocumentStatus.APPROVED || invoice.status === OperationalDocumentStatus.POSTED) return invoice;
-    await assertMakerChecker(tx, actor.companyId, invoice.preparedById, actor.userId, "approve this sales invoice");
-    if (invoice.dueDate) {
-      const receivable = await requirePostingAccount(tx, { companyId: actor.companyId, branchId: invoice.branchId, accountType: "ACCOUNTS_RECEIVABLE" });
-      const rows = await tx.$queryRaw<Array<{ balance: Prisma.Decimal }>>(Prisma.sql`
-        SELECT COALESCE(SUM(l."baseDebit" - l."baseCredit"),0)::numeric(19,4) AS balance
-        FROM "JournalEntryLine" l JOIN "JournalEntry" j ON j."id" = l."entryId"
-        WHERE j."companyId" = ${actor.companyId}::uuid AND j."status" = 'POSTED'
-          AND l."accountId" = ${receivable.id}::uuid AND l."customerId" = ${invoice.customerId}::uuid
-      `);
-      const outstanding = rows[0]?.balance || zero();
-      if (outstanding.plus(invoice.grandTotal).gt(invoice.customer.creditLimit)) {
-        const singleUser = await isSingleUserMode(tx, actor.companyId);
-        const reason = assertCreditOverrideAllowed(actor, { outstanding, invoiceTotal: invoice.grandTotal, creditLimit: invoice.customer.creditLimit }, singleUser);
-        await appendAudit({
-          companyId: actor.companyId,
-          actorId: actor.userId,
-          branchId: invoice.branchId,
-          warehouseId: invoice.warehouseId,
-          action: "CREDIT_LIMIT_OVERRIDDEN",
-          module: "sales",
-          entityType: "SalesInvoice",
-          entityId: id,
-          entityReference: invoice.invoiceNumber,
-          metadata: { reason, outstanding: outstanding.toFixed(4), invoiceTotal: invoice.grandTotal.toFixed(4), creditLimit: invoice.customer.creditLimit.toFixed(4) },
-        }, tx);
-      }
-    }
-    await assertApprovalPolicy(tx, { actor, documentType: "SALES_INVOICE", amount: invoice.grandTotal, entityType: "SalesInvoice", entityId: id, reference: invoice.invoiceNumber });
-    const updated = await tx.salesInvoice.update({ where: { id }, data: { status: OperationalDocumentStatus.APPROVED, approvedById: actor.userId, approvedAt: new Date() } });
-    await appendAudit({ companyId: actor.companyId, actorId: actor.userId, branchId: invoice.branchId, warehouseId: invoice.warehouseId, action: "SALES_INVOICE_APPROVED", module: "sales", entityType: "SalesInvoice", entityId: id, entityReference: invoice.invoiceNumber, previousValues: { status: invoice.status }, newValues: { status: updated.status } }, tx);
-    return updated;
-  });
+  return postSalesInvoice(actor, id);
 }
 
 export async function postSalesInvoice(actor: SalesActor, id: string) {
   return prisma.$transaction(
     async (tx) => {
-      await ensureSingleUserDatabase(tx as any);
+      await ensureSingleUserDatabase(tx);
       const invoice = await lockSalesInvoice(tx, id, actor.companyId);
       if (!invoice) throw new ApiError(404, "SALES_INVOICE_NOT_FOUND", "Sales invoice was not found.");
       if (invoice.status === OperationalDocumentStatus.POSTED) return invoice;
-      if (invoice.status === OperationalDocumentStatus.DRAFT || invoice.status === OperationalDocumentStatus.SUBMITTED) {
-        await tx.salesInvoice.update({
-          where: { id },
-          data: {
-            status: OperationalDocumentStatus.APPROVED,
-            approvedById: invoice.approvedById || actor.userId,
-            approvedAt: invoice.approvedAt || new Date(),
-          },
-        });
-        invoice.status = OperationalDocumentStatus.APPROVED;
-        invoice.approvedById = invoice.approvedById || actor.userId;
+      if (
+        invoice.status === OperationalDocumentStatus.CANCELLED ||
+        invoice.status === OperationalDocumentStatus.REVERSED ||
+        invoice.status === OperationalDocumentStatus.REJECTED
+      ) {
+        throw new ApiError(409, "INVALID_DOCUMENT_STATE", `Sales invoice in ${invoice.status} status cannot be posted.`);
       }
-      await assertSegregationOfDuties(tx, actor.companyId, actor.userId, invoice.preparedById, invoice.approvedById, "post this sales invoice", [], true);
+
+      // Customer status check
       if (invoice.customer.status !== "ACTIVE") throw new ApiError(409, "CUSTOMER_INACTIVE", "The customer is no longer active.");
+
+      // Direct commercial discount cap enforcement
+      await assertDiscountCap(tx, {
+        actor,
+        subtotal: invoice.subtotal,
+        discountTotal: invoice.discountTotal,
+        entityId: id,
+        reference: invoice.invoiceNumber,
+      });
+
+      // Credit limit check on direct post for term sales
+      if (invoice.dueDate) {
+        const receivable = await requirePostingAccount(tx, { companyId: actor.companyId, branchId: invoice.branchId, accountType: "ACCOUNTS_RECEIVABLE" });
+        const rows = await tx.$queryRaw<Array<{ balance: Prisma.Decimal }>>(Prisma.sql`
+          SELECT COALESCE(SUM(l."baseDebit" - l."baseCredit"),0)::numeric(19,4) AS balance
+          FROM "JournalEntryLine" l JOIN "JournalEntry" j ON j."id" = l."entryId"
+          WHERE j."companyId" = ${actor.companyId}::uuid AND j."status" = 'POSTED'
+            AND l."accountId" = ${receivable.id}::uuid AND l."customerId" = ${invoice.customerId}::uuid
+        `);
+        const outstanding = rows[0]?.balance || zero();
+        if (outstanding.plus(invoice.grandTotal).gt(invoice.customer.creditLimit)) {
+          const singleUser = await isSingleUserMode(tx, actor.companyId);
+          const reason = assertCreditOverrideAllowed(actor, { outstanding, invoiceTotal: invoice.grandTotal, creditLimit: invoice.customer.creditLimit }, singleUser);
+          await appendAudit({
+            companyId: actor.companyId,
+            actorId: actor.userId,
+            branchId: invoice.branchId,
+            warehouseId: invoice.warehouseId,
+            action: "CREDIT_LIMIT_OVERRIDDEN",
+            module: "sales",
+            entityType: "SalesInvoice",
+            entityId: id,
+            entityReference: invoice.invoiceNumber,
+            metadata: { reason, outstanding: outstanding.toFixed(4), invoiceTotal: invoice.grandTotal.toFixed(4), creditLimit: invoice.customer.creditLimit.toFixed(4) },
+          }, tx);
+        }
+      }
+
       await enableInventoryPosting(tx);
 
       let totalCost = zero();

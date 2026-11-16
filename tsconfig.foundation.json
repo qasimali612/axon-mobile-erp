@@ -25,6 +25,8 @@
     "src/components/inventory/**",
     "src/components/purchase/**",
     "src/components/sales/**",
-    "src/components/parties/**"
+    "src/components/parties/**",
+    "src/tests/**",
+    "src/__tests__/**"
   ]
 }

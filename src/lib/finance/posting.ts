@@ -9,6 +9,7 @@ import {
   type JournalEntry,
 } from "@prisma/client";
 import { ApiError } from "@/lib/api";
+import { nextDocumentNumber } from "@/lib/document-sequence";
 import { prisma } from "@/lib/prisma";
 import { decimal, moneyString, zero } from "@/lib/finance/money";
 import { assertApprovalPolicy } from "@/lib/policies";
@@ -83,34 +84,16 @@ async function issueVoucherNumber(
   });
   if (!branch) throw new ApiError(404, "BRANCH_NOT_FOUND", "The selected branch is not available.");
 
-  await tx.documentSequence.upsert({
-    where: { companyId_branchId_documentType_fiscalYear: { companyId, branchId, documentType, fiscalYear } },
-    create: {
-      companyId,
-      branchId,
-      documentType,
-      fiscalYear,
-      prefix: `${branch.documentPrefix}-${documentType === "JOURNAL_REVERSAL" ? "RV" : "JV"}`,
-      nextValue: 1n,
-      padding: 6,
-    },
-    update: {},
-  });
+  const cleanBranch = (branch.documentPrefix || "BR").trim().replace(/[^A-Za-z0-9]/g, "") || "BR";
+  const cleanSuffix = documentType === "JOURNAL_REVERSAL" ? "RV" : "JV";
 
-  const issued = await tx.$queryRaw<Array<{ issuedValue: bigint; prefix: string; padding: number }>>(Prisma.sql`
-    UPDATE "DocumentSequence"
-       SET "nextValue" = "nextValue" + 1,
-           "version" = "version" + 1,
-           "updatedAt" = CURRENT_TIMESTAMP
-     WHERE "companyId" = ${companyId}::uuid
-       AND "branchId" = ${branchId}::uuid
-       AND "documentType" = ${documentType}
-       AND "fiscalYear" = ${fiscalYear}
-    RETURNING ("nextValue" - 1) AS "issuedValue", "prefix", "padding"
-  `);
-  const row = issued[0];
-  if (!row) throw new ApiError(409, "SEQUENCE_CONFLICT", "A voucher number could not be reserved.");
-  return `${row.prefix}-${fiscalYear}-${row.issuedValue.toString().padStart(row.padding, "0")}`;
+  return nextDocumentNumber(tx, {
+    companyId,
+    branchId,
+    documentType,
+    fiscalYear,
+    prefix: `${cleanBranch}-${cleanSuffix}`,
+  });
 }
 
 async function getJournalForWorkflow(tx: Prisma.TransactionClient, id: string, companyId: string) {
