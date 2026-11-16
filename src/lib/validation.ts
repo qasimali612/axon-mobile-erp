@@ -106,9 +106,6 @@ export const productSchema = z.object({
     barcode: z.string().trim().max(100).optional().or(z.literal("")),
   }),
 }).superRefine((data, context) => {
-  if (["SMARTPHONE", "FEATURE_PHONE"].includes(data.productType) && data.trackingMethod !== "IMEI") {
-    context.addIssue({ code: "custom", path: ["trackingMethod"], message: "Phones must use IMEI tracking." });
-  }
   if (Number(data.variant.minimumSellingPrice) > Number(data.variant.retailPrice)) {
     context.addIssue({ code: "custom", path: ["variant", "minimumSellingPrice"], message: "Minimum price cannot exceed retail price." });
   }
