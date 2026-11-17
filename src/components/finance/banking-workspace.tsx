@@ -75,7 +75,75 @@ export function BankingWorkspace({ currency, permissions }: Props) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const filteredTransactions = useMemo(() => transactions.filter((row) => (!ledgerFilter.bankAccountId || row.bankAccountId === ledgerFilter.bankAccountId) && (!ledgerFilter.status || row.reconciliationStatus === ledgerFilter.status)), [transactions, ledgerFilter]);
+  const filteredTransactions = useMemo<Row[]>(() => {
+    // If a specific bank account is selected, compute running balance for that account
+    if (ledgerFilter.bankAccountId) {
+      const selectedAccount = accounts.find((a: Row) => a.id === ledgerFilter.bankAccountId);
+      const initialBalance = Number(selectedAccount?.openingBalance || 0);
+
+      // Get all transactions for this account sorted chronologically
+      const accountTxns = transactions.filter((t: Row) => t.bankAccountId === ledgerFilter.bankAccountId);
+      const sortedAsc = [...accountTxns].sort((a: Row, b: Row) => {
+        const da = new Date(a.transactionDate).getTime();
+        const db = new Date(b.transactionDate).getTime();
+        if (da !== db) return da - db;
+        const ca = new Date(a.createdAt || 0).getTime();
+        const cb = new Date(b.createdAt || 0).getTime();
+        return ca - cb;
+      });
+
+      let currentBal = initialBalance;
+      const balanceMap = new Map<string, number>();
+      for (const t of sortedAsc) {
+        currentBal += Number(t.deposit || 0) - Number(t.withdrawal || 0);
+        balanceMap.set(t.id, currentBal);
+      }
+
+      return accountTxns
+        .filter((t: Row) => !ledgerFilter.status || t.reconciliationStatus === ledgerFilter.status)
+        .map((t: Row): Row => ({
+          ...t,
+          runningBalance: balanceMap.get(t.id) ?? 0,
+        }));
+    }
+
+    // If all bank accounts are selected, compute running balance per bank account
+    const accountInitialBalances = new Map<string, number>();
+    for (const a of accounts) {
+      accountInitialBalances.set(a.id, Number(a.openingBalance || 0));
+    }
+
+    const txnsByAccount = new Map<string, Row[]>();
+    for (const t of transactions) {
+      const list = txnsByAccount.get(t.bankAccountId) || [];
+      list.push(t);
+      txnsByAccount.set(t.bankAccountId, list);
+    }
+
+    const balanceMap = new Map<string, number>();
+    for (const [accId, accTxns] of txnsByAccount.entries()) {
+      const sortedAsc = [...accTxns].sort((a: Row, b: Row) => {
+        const da = new Date(a.transactionDate).getTime();
+        const db = new Date(b.transactionDate).getTime();
+        if (da !== db) return da - db;
+        const ca = new Date(a.createdAt || 0).getTime();
+        const cb = new Date(b.createdAt || 0).getTime();
+        return ca - cb;
+      });
+      let currentBal = accountInitialBalances.get(accId) || 0;
+      for (const t of sortedAsc) {
+        currentBal += Number(t.deposit || 0) - Number(t.withdrawal || 0);
+        balanceMap.set(t.id, currentBal);
+      }
+    }
+
+    return transactions
+      .filter((t: Row) => !ledgerFilter.status || t.reconciliationStatus === ledgerFilter.status)
+      .map((t: Row): Row => ({
+        ...t,
+        runningBalance: balanceMap.get(t.id) ?? 0,
+      }));
+  }, [transactions, accounts, ledgerFilter]);
   const ledgerTotals = useMemo(() => accounts.map((account) => {
     const rows = transactions.filter((row) => row.bankAccountId === account.id);
     const balance = rows.reduce((sum, row) => sum + Number(row.deposit) - Number(row.withdrawal), 0);
@@ -413,9 +481,20 @@ export function BankingWorkspace({ currency, permissions }: Props) {
               <option value="UNRECONCILED">Unreconciled</option>
               <option value="RECONCILED">Reconciled</option>
             </select>
-            <span className="ml-auto text-[11px] text-slate-500 font-medium">
-              {filteredTransactions.length} posted transaction{filteredTransactions.length === 1 ? "" : "s"}
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <a
+                href={`/finance/banking/ledger/print?bankAccountId=${ledgerFilter.bankAccountId}&status=${ledgerFilter.status}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+              >
+                <Printer className="h-3.5 w-3.5 text-slate-500" />
+                <span>Print Ledger</span>
+              </a>
+              <span className="text-[11px] text-slate-500 font-medium">
+                {filteredTransactions.length} posted transaction{filteredTransactions.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[950px] text-left">
@@ -426,6 +505,7 @@ export function BankingWorkspace({ currency, permissions }: Props) {
                   <th className="px-4 py-3">Description & Reference</th>
                   <th className="px-4 py-3 text-right">Deposit (Inflow)</th>
                   <th className="px-4 py-3 text-right">Withdrawal (Outflow)</th>
+                  <th className="px-4 py-3 text-right">Running Balance</th>
                   <th className="px-5 py-3 text-center">Status</th>
                 </tr>
               </thead>
@@ -466,6 +546,9 @@ export function BankingWorkspace({ currency, permissions }: Props) {
                     <td className="px-4 py-3 text-right font-mono font-bold text-rose-700">
                       {Number(row.withdrawal) === 0 ? "—" : formatMoney(String(row.withdrawal), row.bankAccount?.currencyCode || currency)}
                     </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">
+                      {formatMoney(String(row.runningBalance ?? 0), row.bankAccount?.currencyCode || currency)}
+                    </td>
                     <td className="px-5 py-3 text-center">
                       <Badge tone={row.reconciliationStatus === "RECONCILED" ? "green" : "amber"}>
                         {titleCase(row.reconciliationStatus)}
@@ -475,7 +558,7 @@ export function BankingWorkspace({ currency, permissions }: Props) {
                 ))}
                 {!filteredTransactions.length ? (
                   <tr>
-                    <td colSpan={6} className="py-14 text-center text-xs text-slate-400">
+                    <td colSpan={7} className="py-14 text-center text-xs text-slate-400">
                       No posted bank transactions match this filter.
                     </td>
                   </tr>
