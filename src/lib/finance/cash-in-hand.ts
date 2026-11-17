@@ -59,14 +59,19 @@ export async function getCashInHandReport(filters: CashInHandFilters) {
       ? { branchId: { in: filters.branchIds } }
       : {};
 
-  // 2. Compute Opening Balance (All posted activity strictly before filters.from)
+  // 2. Compute Opening Balance:
+  // All posted activity strictly before filters.from
+  // PLUS any OPENING setup vouchers on or before filters.to so initial setup is never rendered as operational movement
   const openingAgg = await prisma.journalEntryLine.aggregate({
     where: {
       accountId: { in: targetAccountIds },
       entry: {
         companyId: filters.companyId,
         status: { in: ledgerStatuses },
-        postingDate: { lt: filters.from },
+        OR: [
+          { postingDate: { lt: filters.from } },
+          { voucherType: "OPENING", postingDate: { lte: filters.to } },
+        ],
         ...branchFilter,
       },
     },
@@ -77,13 +82,14 @@ export async function getCashInHandReport(filters: CashInHandFilters) {
   const openingCredit = openingAgg._sum.baseCredit || zero();
   const openingBalance = openingDebit.minus(openingCredit);
 
-  // 3. Query all lines during the selected period
+  // 3. Query all operational lines during the selected period (excluding initial OPENING setup vouchers)
   const lines = await prisma.journalEntryLine.findMany({
     where: {
       accountId: { in: targetAccountIds },
       entry: {
         companyId: filters.companyId,
         status: { in: ledgerStatuses },
+        voucherType: { not: "OPENING" },
         postingDate: { gte: filters.from, lte: filters.to },
         ...branchFilter,
       },
