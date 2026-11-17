@@ -679,8 +679,10 @@ export function CustomerProfileView({ data }: { data: CustomerProfileData }) {
                         {tx.voucherNumber}
                       </Link>
                     </td>
-                    <td className="px-4 py-2.5 text-slate-800">
-                      <span className="font-semibold">{tx.reference || tx.description}</span>
+                    <td className="px-4 py-2.5 text-slate-800 min-w-[280px]">
+                      <div className="whitespace-pre-line text-xs leading-relaxed text-slate-700">
+                        {tx.description}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{tx.branchCode}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-900">
@@ -859,3 +861,4 @@ export function CustomerProfileView({ data }: { data: CustomerProfileData }) {
     </div>
   );
 }
+

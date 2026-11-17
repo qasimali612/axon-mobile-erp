@@ -218,8 +218,10 @@ export default async function PartyStatementPrintPage({ params, searchParams }: 
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600">{t.branch.code}</td>
-                    <td className="px-3 py-2.5 text-slate-600 max-w-[220px] truncate" title={t.description}>
-                      {t.description}
+                    <td className="px-3 py-2 text-slate-700 min-w-[260px]">
+                      <div className="whitespace-pre-line text-[11px] leading-relaxed">
+                        {t.description}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-900">
                       {t.debit.gt(0) ? formatMoney(t.debit.toString(), currency) : "—"}

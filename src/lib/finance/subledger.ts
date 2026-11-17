@@ -241,6 +241,211 @@ export async function getPartyStatement(input: { companyId: string; kind: PartyL
       AND a."accountType"=${controlType} AND ${partyPredicate} ${branches}
     ORDER BY e."postingDate", e."voucherNumber", l."lineNumber" LIMIT 5001`);
   if (rawLines.length > 5_000) throw new ApiError(422, "REPORT_TOO_LARGE", "This statement exceeds 5,000 lines. Select a shorter date range.");
+
+  // Batch load document details (invoice items, GRN items, payment allocations, remarks)
+  const salesInvoiceIds = Array.from(
+    new Set(
+      rawLines
+        .filter((l) => (l.sourceDocumentType === "SalesInvoice" || l.sourceModule === "sales") && l.sourceDocumentId)
+        .map((l) => l.sourceDocumentId!)
+    )
+  );
+
+  const purchaseReceiptIds = Array.from(
+    new Set(
+      rawLines
+        .filter((l) => (l.sourceDocumentType === "PurchaseReceipt" || l.sourceModule === "purchase" || l.sourceModule === "receiving") && l.sourceDocumentId)
+        .map((l) => l.sourceDocumentId!)
+    )
+  );
+
+  const paymentIds = Array.from(
+    new Set(
+      rawLines
+        .filter((l) => (l.sourceDocumentType === "Payment" || l.sourceModule === "finance" || l.sourceModule === "payment") && l.sourceDocumentId)
+        .map((l) => l.sourceDocumentId!)
+    )
+  );
+
+  const stockReturnIds = Array.from(
+    new Set(
+      rawLines
+        .filter((l) => l.sourceDocumentType === "StockReturn" && l.sourceDocumentId)
+        .map((l) => l.sourceDocumentId!)
+    )
+  );
+
+  const [invoices, receipts, payments, returns] = await Promise.all([
+    salesInvoiceIds.length
+      ? prisma.salesInvoice.findMany({
+          where: { id: { in: salesInvoiceIds } },
+          include: {
+            lines: {
+              include: {
+                product: { select: { name: true, model: true } },
+                variant: { select: { name: true, sku: true } },
+                units: {
+                  include: {
+                    stockUnit: {
+                      include: {
+                        identifiers: { select: { type: true, value: true } },
+                      },
+                    },
+                  },
+                },
+              },
+              orderBy: { lineNumber: "asc" },
+            },
+          },
+        })
+      : [],
+    purchaseReceiptIds.length
+      ? prisma.purchaseReceipt.findMany({
+          where: { id: { in: purchaseReceiptIds } },
+          include: {
+            lines: {
+              include: {
+                product: { select: { name: true } },
+                variant: { select: { name: true } },
+                units: {
+                  include: {
+                    stockUnit: {
+                      include: {
+                        identifiers: { select: { type: true, value: true } },
+                      },
+                    },
+                  },
+                },
+              },
+              orderBy: { lineNumber: "asc" },
+            },
+          },
+        })
+      : [],
+    paymentIds.length
+      ? prisma.payment.findMany({
+          where: { id: { in: paymentIds } },
+          include: {
+            paymentMethod: { select: { name: true } },
+            bankAccount: { select: { bankName: true, accountNumberLast4: true } },
+            cashAccount: { select: { name: true } },
+            allocations: {
+              include: {
+                salesInvoice: { select: { invoiceNumber: true } },
+                purchaseReceipt: { select: { receiptNumber: true } },
+              },
+            },
+          },
+        })
+      : [],
+    stockReturnIds.length
+      ? prisma.stockReturn.findMany({
+          where: { id: { in: stockReturnIds } },
+          include: {
+            lines: {
+              include: {
+                product: { select: { name: true } },
+              },
+            },
+          },
+        })
+      : [],
+  ]);
+
+  const invoiceMap = new Map(invoices.map((inv) => [inv.id, inv]));
+  const receiptMap = new Map(receipts.map((r) => [r.id, r]));
+  const paymentMap = new Map(payments.map((p) => [p.id, p]));
+  const returnMap = new Map(returns.map((ret) => [ret.id, ret]));
+
+  function buildRichDescription(line: RawStatementLine): string {
+    if (line.sourceDocumentId && invoiceMap.has(line.sourceDocumentId)) {
+      const inv = invoiceMap.get(line.sourceDocumentId)!;
+      const itemLines: string[] = [];
+      for (const item of inv.lines) {
+        const prod = item.product.name;
+        const variant =
+          item.variant?.name && item.variant.name !== "Default" && item.variant.name !== "N/A"
+            ? ` (${item.variant.name})`
+            : "";
+        const qty = Number(item.quantity);
+        const price = Number(item.unitPrice);
+        const imeis = item.units.flatMap((u) => (u.stockUnit?.identifiers || []).map((i) => i.value));
+        const imeiText = imeis.length ? ` [IMEI: ${imeis.join(", ")}]` : "";
+        itemLines.push(`• ${prod}${variant} × ${qty} @ Rs. ${price.toLocaleString()}${imeiText}`);
+      }
+      const parts = [
+        `Sales Invoice: ${inv.invoiceNumber}`,
+        itemLines.length ? itemLines.join("\n") : "",
+        inv.notes ? `Remarks: ${inv.notes}` : "",
+      ].filter(Boolean);
+      return parts.join("\n");
+    }
+
+    if (line.sourceDocumentId && receiptMap.has(line.sourceDocumentId)) {
+      const grn = receiptMap.get(line.sourceDocumentId)!;
+      const itemLines: string[] = [];
+      for (const item of grn.lines) {
+        const prod = item.product.name;
+        const variant =
+          item.variant?.name && item.variant.name !== "Default" && item.variant.name !== "N/A"
+            ? ` (${item.variant.name})`
+            : "";
+        const qty = Number(item.quantity);
+        const cost = Number(item.unitCost);
+        const imeis = item.units.flatMap((u) => (u.stockUnit?.identifiers || []).map((i) => i.value));
+        const imeiText = imeis.length ? ` [IMEI: ${imeis.join(", ")}]` : "";
+        itemLines.push(`• ${prod}${variant} × ${qty} @ Rs. ${cost.toLocaleString()}${imeiText}`);
+      }
+      const parts = [
+        `Purchase Goods Receipt: ${grn.receiptNumber}`,
+        itemLines.length ? itemLines.join("\n") : "",
+        grn.notes ? `Remarks: ${grn.notes}` : "",
+      ].filter(Boolean);
+      return parts.join("\n");
+    }
+
+    if (line.sourceDocumentId && paymentMap.has(line.sourceDocumentId)) {
+      const pmt = paymentMap.get(line.sourceDocumentId)!;
+      const method =
+        pmt.paymentMethod?.name ||
+        (pmt.bankAccount ? `Bank (${pmt.bankAccount.bankName})` : null) ||
+        (pmt.cashAccount ? `Cash (${pmt.cashAccount.name})` : "Direct Account");
+      const allocDocs = pmt.allocations
+        .map((a) => a.salesInvoice?.invoiceNumber || a.purchaseReceipt?.receiptNumber)
+        .filter(Boolean);
+      const allocText = allocDocs.length
+        ? `Settled on: ${allocDocs.join(", ")}`
+        : pmt.notes || "On-account settlement";
+      const parts = [
+        `${line.description || "Payment"}: ${pmt.paymentNumber} (${method})`,
+        `• ${allocText}`,
+        pmt.reference ? `Ref: ${pmt.reference}` : "",
+        pmt.notes && pmt.notes !== pmt.reference ? `Remarks: ${pmt.notes}` : "",
+      ].filter(Boolean);
+      return parts.join("\n");
+    }
+
+    if (line.sourceDocumentId && returnMap.has(line.sourceDocumentId)) {
+      const ret = returnMap.get(line.sourceDocumentId)!;
+      const itemLines = ret.lines.map((l) => `• Return: ${l.product.name} × ${Number(l.quantity)}`);
+      const parts = [
+        `Stock Return: ${ret.returnNumber}`,
+        itemLines.length ? itemLines.join("\n") : "",
+        ret.reason ? `Reason: ${ret.reason}` : "",
+        ret.notes ? `Remarks: ${ret.notes}` : "",
+      ].filter(Boolean);
+      return parts.join("\n");
+    }
+
+    // Default fallback
+    const parts = [
+      line.description,
+      line.narration && line.narration !== line.description ? `Remarks: ${line.narration}` : "",
+      line.reference ? `Ref: ${line.reference}` : "",
+    ].filter(Boolean);
+    return parts.join("\n");
+  }
+
   const aggregate = aggregates[0] || { openingDebit: zero(), openingCredit: zero(), periodDebit: zero(), periodCredit: zero() };
   const balanceEffect = (debit: Prisma.Decimal, credit: Prisma.Decimal) => input.kind === "customer" ? debit.minus(credit) : credit.minus(debit);
   const profileOpening = new Prisma.Decimal((party as any).openingBalance || 0);
@@ -252,7 +457,27 @@ export async function getPartyStatement(input: { companyId: string; kind: PartyL
   let runningBalance = openingBalance;
   const transactions = rawLines.map((line) => {
     const movement = round(balanceEffect(line.debit, line.credit)); runningBalance = round(runningBalance.plus(movement));
-    return { id: line.id, postingDate: line.postingDate, voucherNumber: line.voucherNumber, voucherType: line.voucherType, description: line.description, narration: line.narration, reference: line.reference, sourceModule: line.sourceModule, sourceDocumentType: line.sourceDocumentType, sourceDocumentId: line.sourceDocumentId, sourceDocumentNumber: line.sourceDocumentNumber, journalEntryId: line.journalEntryId, journalStatus: line.journalStatus, branch: { id: line.branchId, code: line.branchCode, name: line.branchName }, debit: line.debit, credit: line.credit, movement, runningBalance };
+    const richDescription = buildRichDescription(line);
+    return {
+      id: line.id,
+      postingDate: line.postingDate,
+      voucherNumber: line.voucherNumber,
+      voucherType: line.voucherType,
+      description: richDescription,
+      narration: line.narration,
+      reference: line.reference,
+      sourceModule: line.sourceModule,
+      sourceDocumentType: line.sourceDocumentType,
+      sourceDocumentId: line.sourceDocumentId,
+      sourceDocumentNumber: line.sourceDocumentNumber,
+      journalEntryId: line.journalEntryId,
+      journalStatus: line.journalStatus,
+      branch: { id: line.branchId, code: line.branchCode, name: line.branchName },
+      debit: line.debit,
+      credit: line.credit,
+      movement,
+      runningBalance,
+    };
   });
   const openItems = (await openItemsByParty(input.kind, input.companyId, [input.partyId], input.to, input.branchIds)).get(input.partyId) || [];
   const aging = emptyAging();
