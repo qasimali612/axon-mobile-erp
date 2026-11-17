@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { appendAudit } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
@@ -27,7 +28,22 @@ export async function GET(_request: Request, { params }: Params) {
       throw new ApiError(404, "NOT_FOUND", "Supplier not found.");
     }
 
-    return NextResponse.json(jsonSafe({ data: supplier }));
+    const payable = await prisma.account.findFirst({
+      where: { companyId: context.company.id, accountType: "ACCOUNTS_PAYABLE", isActive: true },
+      select: { id: true },
+    });
+    let outstanding = "0.0000";
+    if (payable) {
+      const rows = await prisma.$queryRaw<Array<{ balance: Prisma.Decimal }>>(Prisma.sql`
+        SELECT COALESCE(SUM(l."baseCredit" - l."baseDebit"),0)::numeric(19,4) AS balance
+        FROM "JournalEntryLine" l JOIN "JournalEntry" j ON j."id" = l."entryId"
+        WHERE j."companyId" = ${context.company.id}::uuid AND j."status" = 'POSTED'
+          AND l."accountId" = ${payable.id}::uuid AND l."supplierId" = ${id}::uuid
+      `);
+      outstanding = (rows[0]?.balance || new Prisma.Decimal(0)).toFixed(4);
+    }
+
+    return NextResponse.json(jsonSafe({ data: { ...supplier, outstanding } }));
   } catch (error) {
     return apiError(error);
   }

@@ -15,8 +15,8 @@
 | **03** | Product & Item Master | P02 | `Product`, `ProductVariant` | `/api/products` | `/(erp)/catalog/products` | **In Progress** | 21 products, IMEI and non-IMEI options. |
 | **04** | Brand & Model Management | P02 | `Brand`, `ProductCategory` | `/api/catalog/masters` | `/(erp)/catalog/masters` | **Implemented** | Master categories and brands. |
 | **05** | Barcode & IMEI Management | P04 | `PhysicalStockUnit`, `DeviceIdentifier` | `/api/inventory/imei-audit` | `/(erp)/inventory/imei` | **Implemented** | 1 phone = 1 unit; 12 dual-SIM, 17 single-SIM. |
-| **06** | Supplier Management | P06 | `Supplier` | `/api/suppliers` | `/(erp)/parties` | **Implemented** | Opening balance double-entry automated. |
-| **07** | Customer Management | P06 | `Customer` | `/api/customers` | `/(erp)/parties` | **Implemented** | Opening balance double-entry automated. |
+| **06** | Supplier Management | P06 | `Supplier` | `/api/suppliers` | `/(erp)/parties` | **Passed** | Master dashboard, running subledger, 100% GL reconciliation. |
+| **07** | Customer Management | P06 | `Customer` | `/api/customers` | `/(erp)/parties` | **Passed** | Master dashboard, credit limits, 100% GL reconciliation. |
 | **08** | Purchasing Management | P03 | `PurchaseOrder`, `PurchaseReceipt`| `/api/purchases/orders` | `/(erp)/purchases` | **Implemented** | Direct purchase and PO workflows. |
 | **09** | Goods Receiving (GRN) | P03 | `PurchaseReceiptLine`, `Unit` | `/api/purchases/receipts` | `/(erp)/goods-receipts` | **Implemented** | Bulk IMEI scanner, QC inspection. |
 | **10** | Inventory & Stock Movements | P04 | `StockBalance`, `InventoryMovement`| `/api/inventory/*` | `/(erp)/inventory/*` | **Implemented** | Stock transfers, adjustments, stock counts. |
@@ -26,8 +26,8 @@
 | **14** | Pricing & Discounts | P08 | `PriceList`, `PriceListItem` | `/api/catalog/price-lists` | `/(erp)/catalog/price-lists` | **Implemented** | Retail, wholesale, dealer pricing tiers. |
 | **15** | Expense Management | P07 | `JournalEntry`, `JournalEntryLine` | `/api/finance/expenses` | `/(erp)/finance/expenses` | **Implemented** | Operating expense categories & GL posting. |
 | **16** | General Ledger Accounting | P07 | `Account`, `JournalEntry` | `/api/finance/journals` | `/(erp)/finance/journals` | **Passed** | Double-entry invariant verified (0.00 diff). |
-| **17** | Accounts Receivable | P06 | `Customer`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Implemented** | Subledger statements with opening balance. |
-| **18** | Accounts Payable | P06 | `Supplier`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Implemented** | Subledger statements with opening balance. |
+| **17** | Accounts Receivable | P06 | `Customer`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |
+| **18** | Accounts Payable | P06 | `Supplier`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |
 | **19** | Cash & Bank Management | P07 | `BankAccount`, `BankTransaction` | `/api/finance/bank-accounts` | `/(erp)/finance/banking` | **Passed** | Running balance & professional print verified. |
 | **20** | Fixed Asset Management | P10 | `FixedAsset`, `AssetDepreciation`| `/api/finance/assets` | `/(erp)/finance/assets` | **Implemented** | Asset register, depreciation, disposal. |
 | **21** | Sales Incentive Management | P10 | `IncentivePlan`, `IncentivePayable`| `/api/finance/incentives` | `/(erp)/finance/incentives` | **Implemented** | Salesperson targets & commission calculation. |
@@ -45,3 +45,4 @@
 | **33** | System Settings | P09 | `SystemSetting` | `/api/settings` | `/(erp)/settings` | **Implemented** | Document sequences & operating preferences. |
 | **34** | Import & Export | P02 | Bulk Processing | `/api/inventory/bulk-import`| Data Tables | **Implemented** | CSV/Excel export on all registers. |
 | **35** | Backup & Recovery | P12 | Scripted Backups | Scripts & CLI | Node Scripts | **Passed** | Cloud DB verified, PGlite fallback tested. |
+

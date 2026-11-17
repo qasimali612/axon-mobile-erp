@@ -70,10 +70,28 @@
 
 ---
 
-## 6. Acceptance Status
+## 6. Priority 06 Acceptance Verification (Customer & Supplier Management)
+
+| Test Case | Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **TC-P06-01** | Customer Registry Verification | Active customers with codes, types, and limits | 3 registered customers (`CUST-1018`, `CUST-8213`, `WALK-IN`) verified | **Passed** |
+| **TC-P06-02** | Customer Credit Limit Management | Credit limits and available credit calculated | CUST-1018 limit Rs. 1,000,000, Available: Rs. 1,000,000 verified | **Passed** |
+| **TC-P06-03** | Sales & Receipt Settlements | Invoices settled with PaymentAllocation records | 11 sales invoices (Rs. 456,494) 100% settled; 0 open invoices | **Passed** |
+| **TC-P06-04** | GL Account 1100 (Trade Receivables) Reconciliation | Total customer subledgers equal GL Control 1100 | GL Debit Rs. 598,892 = Credit Rs. 598,892; Net Balance Rs. 0.00 (Diff: Rs. 0.00) | **Passed** |
+| **TC-P06-05** | Supplier Registry Verification | Active suppliers with terms and opening balances | 2 registered suppliers (`SUP-3414`, `SUP-8910`) verified | **Passed** |
+| **TC-P06-06** | Supplier Bill & Payment Settlement | GRN settled with PaymentAllocation records | ISB-GRN-000001 (Rs. 278,900) 100% settled; 0 open bills | **Passed** |
+| **TC-P06-07** | Supplier Opening Balance & Advance | Opening balance rolls forward; advance offset | SUP-3414 OB Rs. 140,475 − Payment Rs. 50,000 = Rs. 90,475.00 payable | **Passed** |
+| **TC-P06-08** | GL Account 2000 (Trade Payables) Reconciliation | Total supplier subledgers equal GL Control 2000 | GL Debit Rs. 328,900, Credit Rs. 419,375; Net Payable Rs. 90,475.00 (Diff: Rs. 0.00) | **Passed** |
+| **TC-P06-09** | Chronological Running Balance Subledger | Line-by-line running balance accurately tracked | Verified in `scripts/test_priority_06.mjs` (27/27 tests passed) | **Passed** |
+| **TC-P06-10** | Printable Account Statements | A4 official statement with aging and signatures | `PartyStatementPrintPage` verified with running balance & aging ribbon | **Passed** |
+
+---
+
+## 7. Acceptance Status
 - **Priority 01 (Foundation):** **PASSED**
 - **Priority 02 (Product & Catalog):** **PASSED**
 - **Priority 03 (Purchases & Receiving):** **PASSED**
 - **Priority 04 (Inventory & IMEI Management):** **PASSED**
 - **Priority 05 (Sales Management & POS):** **PASSED**
-- **Next Priority:** **Priority 06 — Customer & Supplier Management**
+- **Priority 06 (Customer & Supplier Management):** **PASSED**
+- **Next Priority:** **Priority 07 — Cash, Bank & Expense Management**

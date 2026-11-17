@@ -14,8 +14,10 @@
 | **BUG-002** | P07 | Bank Ledger | Bank ledger table lacked a line-by-line running balance and professional printable statement. | Bank transaction rows only showed deposit and withdrawal columns without chronological cumulative balance mapping. | **Resolved** | Added chronological `runningBalance` calculation in `banking-workspace.tsx` and created dedicated professional statement print page `/finance/banking/ledger/print`. Verified down to Rs. 3,816. |
 | **BUG-003** | P02 | Product Creation | Model creation forced IMEI tracking for all cellular devices without allowing non-IMEI option for accessories or non-serialized products. | Frontend form locked tracking method whenever category was set to cellular. | **Resolved** | Added flexible tracking method selection (`IMEI`, `SERIAL_NUMBER`, `NONE` / `QUANTITY`) during product and variant creation. |
 | **BUG-004** | P07 | Contra Vouchers | Contra vouchers screen previously labeled cash withdrawals as "Counter cash deposit into bank account". | Label was hardcoded to deposit narration regardless of voucher line direction. | **Resolved** | Fixed voucher direction classification based on journal debit/credit lines. Verified Debit 1000 Cash on Hand / Credit 1010 Current Account correctly displays as "Cash Withdrawal". |
+| **BUG-005** | P06 | Customer & Supplier Profile | Customer and supplier master detail pages lacked tabbed navigation for fast inspection of invoices/bills, payments, running balance ledger, and aging. | Detail pages only showed a basic static table of recent documents without subledger running balance or aging tabs. | **Resolved** | Built full multi-tab CustomerProfileView and SupplierProfileView components with 6 interactive tabs (Overview, Invoices/Bills, Receipts/Payments, Running Balance Subledger, Aging & Open Items, Statement Preview). |
 
 ---
 
 ## Open Defects Under Active Investigation
 - None currently blocking. All verified defects above are resolved and committed.
+

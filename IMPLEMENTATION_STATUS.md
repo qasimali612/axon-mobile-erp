@@ -17,7 +17,7 @@
 | **03** | **Purchase & Goods Receiving** | **Passed** | ISB-GRN-000001 posted, 7 units, Rs. 278,900 balanced PV | Verified end-to-end purchasing & receiving |
 | **04** | **Inventory & IMEI Management** | **Passed** | Valuation Rs. 896,260 reconciles 100% with GL 1200 (Diff Rs. 0.00) | 29 units, 41 IMEIs, 0 duplicates, 0 negative stock |
 | **05** | **Sales Management & Professional POS** | **Passed** | 11 invoices, Rs. 456,494 revenue, Rs. 44,414 profit, thermal print | Dual-SIM sales & COGS verified |
-| **06** | **Customer & Supplier Management** | **In Progress** | 3 customers, 2 suppliers; opening balance wired | Test party aging, open-item settlements |
+| **06** | **Customer & Supplier Management** | **Passed** | 3 customers, 2 suppliers; 27/27 tests passed; GL 1100 & 2000 100% reconciled | Complete profile dashboards, running balance subledgers, aging & statements |
 | **07** | **Cash, Bank & Expense Management** | **Not Started** | Live bank Rs. 3,816, running balance & print added | Reconcile opening stock Rs. 1,025,740 voucher |
 | **08** | **Returns, Exchanges, Pricing & Promotions**| **Not Started** | Return disposition states present | Test exchange & refund cash effects |
 | **09** | **Branches, Warehouses & Users** | **Not Started** | 2 branches (`HZR`, `ISB`), 2 warehouses | Test branch isolation & warehouse scoping |
