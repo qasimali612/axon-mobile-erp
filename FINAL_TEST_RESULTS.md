@@ -57,9 +57,23 @@
 
 ---
 
-## 5. Acceptance Status
+## 5. Priority 05 Acceptance Verification (Sales Management & POS)
+
+| Test Case | Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **TC-P05-01** | Direct Sales & POS Posting | Posts invoice, transitions unit to SOLD, deducts stock | 11 sales invoices posted (Total Revenue: Rs. 456,494) | **Passed** |
+| **TC-P05-02** | Double-Entry Sales Journal | Debit AR & COGS, Credit Revenue & Inventory | All 11 sales vouchers verified strictly balanced (Diff: 0.00) | **Passed** |
+| **TC-P05-03** | Actual COGS & Gross Profit Calculation | Deducts exact acquisition cost per physical handset | Total COGS: Rs. 412,080, Gross Profit: Rs. 44,414 (9.73% margin) | **Passed** |
+| **TC-P05-04** | Dual-SIM Handset Sales Deduction | Handset sold marks both IMEI1 & IMEI2 as sold | Infinix Hot 70 (IMEI1 & IMEI2) verified under unit status SOLD | **Passed** |
+| **TC-P05-05** | Walk-in Cash Counter Sales | Fast POS sale without requiring named customer credit | Walk-in sales posted with cash tender and immediate receipt | **Passed** |
+| **TC-P05-06** | Thermal 80mm & A4 Invoice Printing | Thermal receipt & A4 commercial invoice templates | Verified `/sales/[id]/receipt` and `/sales/[id]/print` | **Passed** |
+
+---
+
+## 6. Acceptance Status
 - **Priority 01 (Foundation):** **PASSED**
 - **Priority 02 (Product & Catalog):** **PASSED**
 - **Priority 03 (Purchases & Receiving):** **PASSED**
 - **Priority 04 (Inventory & IMEI Management):** **PASSED**
-- **Next Priority:** **Priority 05 — Sales Management & Professional POS**
+- **Priority 05 (Sales Management & POS):** **PASSED**
+- **Next Priority:** **Priority 06 — Customer & Supplier Management**
