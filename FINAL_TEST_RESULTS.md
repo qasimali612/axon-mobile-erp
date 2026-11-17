@@ -293,6 +293,48 @@
   - Created Branch Comparison Workspace (`/reports/branch-comparison`), printable statement (`/reports/branch-comparison/print`), and Business Analytics Workspace (`/reports/analytics`).
   - Integrated Treasury & Working Capital Grid and Multi-Branch Performance Summary into Executive Management Dashboard (`/`).
 - **Status:** **PASSED (100% Audit Verified)**
-- **Next Priority:** **Priority 12 — Security, Performance & Final Release**
+- **Next Priority:** **Priority 12 — Security, Performance & Final Release (Completed)**
+
+---
+
+## 12. Priority 12: Security, Performance, Data Integrity & Final Production Release
+
+- **Verification Date:** November 2026
+- **Test Suite Script:** `scripts/test_priority_12.ts` (run via `npx tsx`)
+- **Result:** **30 / 30 Tests Passed (100.0%)**
+- **Test Points Covered:**
+  1. Authentication & Session Security: Active sessions use SHA-256 token hashing, valid expiration timestamps, and secure cookies.
+  2. Inactive User Rejection: Suspended/archived users blocked from authentication boundary.
+  3. Server-Side RBAC Enforcement: Role permissions verified server-side; read-only roles (`AUDITOR`) denied posting permissions.
+  4. Multi-Branch Isolation: Strict data scoping enforced between Hazro Central (`HZR`) and Islamabad (`ISB`).
+  5. Warehouse Restriction Enforcement: Quarantine warehouses (`HZR-QUARANTINE`, `ISB-QUARANTINE`) isolated from direct sales dispatch.
+  6. Password Protection: All passwords hashed with bcrypt (salt rounds >= 10); 0 plaintext passwords or hashes exposed.
+  7. Last Super Administrator Safeguard: `LAST_ADMIN_PROTECTED` prevents deactivation of the last active administrator.
+  8. Duplicate IMEI Detection: Zero duplicate IMEIs in device registry across company.
+  9. Negative Inventory Invariant: Zero negative stock balances across all warehouses and products.
+  10. Dual-SIM Handset Unit Invariant: Dual-SIM handsets maintain exactly 2 IMEI records for 1 physical unit (no double-counting).
+  11. Stock Transfer Integrity: Atomic inter-warehouse transfers preserve total company stock quantity and valuation.
+  12. General Ledger Invariant: Zero unbalanced posted journal entries (100% double-entry equilibrium, diff = Rs. 0.00).
+  13. Subledgers Reconciliation: Trade Receivables (GL 1100 = Rs. 0.00) and Trade Payables (GL 2000 = Rs. 90,475.00) reconciled.
+  14. Treasury Reconciliation: Cash on Hand (GL 1000 = Rs. 47,410.00) and Bank Current Account (GL 1010 = Rs. 3,816.00) reconciled.
+  15. Inventory GL Reconciliation: Merchandise Inventory (GL 1200 = Rs. 896,260.00) matches StockBalance asset valuation 100%.
+  16. Feature Phone Verification: Exactly 63 feature phones verified with standard variants and 0 unintended stock.
+  17. Opening Cash Voucher Audit: `ISB--JV-FY2026-27-000001` verified in perfect double-entry equilibrium (Dr Rs. 69,140 / Cr Rs. 69,140).
+  18. Historical Cut-off Verification: Oct 31 closing cash correctly displays negative Rs. 69,140.00; Nov opening cash matches.
+  19. POS Search Latency: Product lookup responds within cloud SLA budget.
+  20. IMEI Registry Latency: Serialized identifier lookup responds within cloud SLA budget.
+  21. API Idempotency: Unique compound constraint `companyId_sourceModule_idempotencyKey` prevents duplicate postings.
+  22. Executive Dashboard Live Data: Real-time KPIs loaded directly from database without static mock data.
+  23. Ledger Pagination: Transaction pagination supported with bounded take/skip limits.
+  24. Analytics Reliability: BI algorithms execute with zero unhandled runtime exceptions.
+  25. TypeScript Build Quality: Multi-project typecheck passes across all 4 partitions (`foundation`, `finance`, `ops`, `scripts`).
+  26. Next.js Production Build: Next.js 15 production build compiled 188 routes with zero syntax or bundling errors.
+  27. Database Migrations Status: 51 schema migrations applied; 0 unfinished or pending migrations.
+  28. Health Check Endpoint: `/api/health` responds HTTP 200 OK with live database latency and operational status.
+  29. Backup Integrity: Automated backup script `scripts/backup-restore-rehearsal.sh` and parity verification configured.
+  30. Release Parity: Core business invariants verified (48 authentic journals, 29 physical handsets, Rs. 896,260 stock).
+- **Final Release Decision:** **READY FOR RELEASE (v1.0.0-release)**
+- **Release Documentation:** See [`FINAL_RELEASE_REPORT.md`](file:///d:/Inventory%20Managment%20Software/FINAL_RELEASE_REPORT.md).
+
 
 

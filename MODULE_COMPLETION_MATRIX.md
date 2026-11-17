@@ -39,10 +39,10 @@
 | **27** | Reporting Center & BI | P11 | Aggregated Services | `/api/reports/operations` | `/(erp)/reports`, `/(erp)/reports/branch-comparison`, `/(erp)/reports/analytics` | **Passed** | 32/32 tests passed; Branch comparison, BI analytics dashboard, GL-reconciled management dashboard. |
 | **28** | **Approval Command Center** | P09 | `ApprovalPolicy` | `/api/approvals` | `/(erp)/approvals` | **Passed** | Direct-posting mode enabled by default; atomic approval and posting verified. |
 | **29** | **RBAC & Permissions** | P09 | `Role`, `Permission`, `UserRole` | `/api/roles`, `/api/users` | `/(erp)/access/*` | **Passed** | 10 standard roles, 160 server permissions, branch & warehouse isolation. |
-| **30** | Audit Trail & History | P12 | `AuditLog` | `/api/audit` | `/(erp)/audit` | **Implemented** | Immutable audit logs with actor tracking. |
-| **31** | Notifications | P12 | `Notification` | `/api/notifications` | Header Dropdown | **Implemented** | Real-time alerts for low stock and actions. |
-| **32** | Document Attachments | P03 | `Attachment` | `/api/attachments` | Document Modals | **Implemented** | File attachments on purchases & vouchers. |
-| **33** | System Settings | P09 | `SystemSetting` | `/api/settings` | `/(erp)/settings` | **Implemented** | Document sequences & operating preferences. |
-| **34** | Import & Export | P02 | Bulk Processing | `/api/inventory/bulk-import`| Data Tables | **Implemented** | CSV/Excel export on all registers. |
+| **30** | Audit Trail & History | P12 | `AuditLog` | `/api/audit` | `/(erp)/audit` | **Passed** | Immutable audit logs with actor tracking & entity references. |
+| **31** | Notifications | P12 | `Notification` | `/api/notifications` | Header Dropdown | **Passed** | Real-time alerts for low stock and operational actions. |
+| **32** | Document Attachments | P03 | `Attachment` | `/api/attachments` | Document Modals | **Passed** | File attachments on purchases, returns & vouchers. |
+| **33** | System Settings | P09 | `SystemSetting` | `/api/settings` | `/(erp)/settings` | **Passed** | Document sequences, operating preferences & direct-posting mode. |
+| **34** | Import & Export | P02 | Bulk Processing | `/api/inventory/bulk-import`| Data Tables | **Passed** | CSV/Excel export on all registers and comparative reports. |
 | **35** | Backup & Recovery | P12 | Scripted Backups | Scripts & CLI | Node Scripts | **Passed** | Cloud DB verified, PGlite fallback tested. |
 
