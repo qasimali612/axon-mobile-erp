@@ -4,7 +4,7 @@ import { AccountClass, JournalStatus, JournalType, Prisma } from "@prisma/client
 import { ApiError, apiError, assertSameOrigin } from "@/lib/api";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createJournalDraft, submitJournal } from "@/lib/finance/posting";
+import { createJournalDraft, postJournal, submitJournal } from "@/lib/finance/posting";
 
 const expenseInputSchema = z.object({
   branchId: z.string().uuid("Branch is required"),
@@ -24,6 +24,7 @@ const expenseInputSchema = z.object({
   category: z.string().max(100).optional().default("General"),
   narration: z.string().min(3, "Narration must be at least 3 characters").max(500),
   submitNow: z.boolean().optional().default(false),
+  postNow: z.boolean().optional().default(false),
 });
 
 export async function GET(request: Request) {
@@ -272,7 +273,9 @@ export async function POST(request: Request) {
     });
 
     let result: unknown = draft;
-    if (parsed.submitNow) {
+    if (parsed.postNow) {
+      result = await postJournal(actor, draft.id);
+    } else if (parsed.submitNow) {
       result = await submitJournal(actor, draft.id);
     }
 

@@ -265,7 +265,8 @@ export function ExpenseWorkspace({
           referenceDocument: formReference,
           category: formCategory,
           narration: formNarration,
-          submitNow: submitNow || postNow,
+          submitNow: submitNow && !postNow,
+          postNow: postNow,
         }),
       });
       const json = await res.json();
@@ -273,20 +274,6 @@ export function ExpenseWorkspace({
       const voucherId = json.data?.id;
 
       if (postNow && voucherId) {
-        if (canApprove) {
-          await fetch(`/api/finance/expenses/${voucherId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "approve" }),
-          });
-        }
-        if (canPost) {
-          await fetch(`/api/finance/expenses/${voucherId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "post" }),
-          });
-        }
         toast.success("Operating expense posted to General Ledger!", {
           action: {
             label: "Print Voucher",

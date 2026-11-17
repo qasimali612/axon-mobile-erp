@@ -24,7 +24,7 @@
 | **12** | POS / Retail Counter | P05 | `SalesInvoice`, `PaymentMethod` | `/api/sales/invoices`, `/pos` | `/(erp)/pos` | **Implemented** | Barcode/IMEI scanning, multi-tender payment. |
 | **13** | Sales & Purchase Returns | P08 | `StockReturn`, `StockReturnUnit` | `/api/returns` | `/(erp)/returns` | **Implemented** | Resalable vs damaged dispositions. |
 | **14** | Pricing & Discounts | P08 | `PriceList`, `PriceListItem` | `/api/catalog/price-lists` | `/(erp)/catalog/price-lists` | **Implemented** | Retail, wholesale, dealer pricing tiers. |
-| **15** | Expense Management | P07 | `JournalEntry`, `JournalEntryLine` | `/api/finance/expenses` | `/(erp)/finance/expenses` | **Implemented** | Operating expense categories & GL posting. |
+| **15** | Expense Management | P07 | `JournalEntry`, `JournalEntryLine` | `/api/finance/expenses` | `/(erp)/finance/expenses` | **Passed** | 11 default categories seeded, direct GL post, voucher print, running balances. |
 | **16** | General Ledger Accounting | P07 | `Account`, `JournalEntry` | `/api/finance/journals` | `/(erp)/finance/journals` | **Passed** | Double-entry invariant verified (0.00 diff). |
 | **17** | Accounts Receivable | P06 | `Customer`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |
 | **18** | Accounts Payable | P06 | `Supplier`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |

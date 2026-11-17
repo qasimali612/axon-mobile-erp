@@ -19,6 +19,7 @@ const transferInputSchema = z.object({
   reference: z.string().trim().max(120).optional().nullable(),
   narration: z.string().trim().min(5).max(500),
   idempotencyKey: z.string().trim().min(8).max(120).optional().nullable(),
+  allowNegativeBalance: z.boolean().optional().default(false),
 });
 
 export async function GET(request: Request) {
@@ -159,6 +160,20 @@ export async function POST(request: Request) {
         throw new ApiError(400, "CASH_ACCOUNT_REQUIRED", "Source cash account could not be found.");
       }
 
+      // Check available cash on hand balance
+      const cashAgg = await prisma.journalEntryLine.aggregate({
+        where: { accountId: cashAccountId, entry: { companyId, status: { in: ["POSTED", "REVERSED"] } } },
+        _sum: { baseDebit: true, baseCredit: true },
+      });
+      const cashBalance = Number(cashAgg._sum.baseDebit || 0) - Number(cashAgg._sum.baseCredit || 0);
+      if (!body.allowNegativeBalance && amountNum > cashBalance && !context.permissions.includes("FINANCE_OVERRIDE")) {
+        throw new ApiError(
+          422,
+          "INSUFFICIENT_CASH",
+          `Insufficient cash on hand. Available: Rs. ${cashBalance.toLocaleString()}, Requested: Rs. ${amountNum.toLocaleString()}. Authorization required to allow negative cash balance.`
+        );
+      }
+
       debitAccountId = destBank.glAccountId;
       debitBankAccountId = destBank.id;
       debitDescription = `Cash deposit into ${destBank.bankName} (${destBank.code})`;
@@ -176,6 +191,23 @@ export async function POST(request: Request) {
       });
       if (!sourceBank) {
         throw new ApiError(404, "SOURCE_NOT_FOUND", "Source bank account not found.");
+      }
+
+      // Check available bank account balance
+      const bankAgg = await prisma.bankTransaction.aggregate({
+        where: { bankAccountId: sourceBank.id, journalEntry: { status: { in: ["POSTED", "REVERSED"] } } },
+        _sum: { deposit: true, withdrawal: true },
+      });
+      const bankBalance =
+        Number(sourceBank.openingBalance || 0) +
+        Number(bankAgg._sum.deposit || 0) -
+        Number(bankAgg._sum.withdrawal || 0);
+      if (!body.allowNegativeBalance && amountNum > bankBalance && !context.permissions.includes("FINANCE_OVERRIDE")) {
+        throw new ApiError(
+          422,
+          "INSUFFICIENT_BANK_FUNDS",
+          `Insufficient funds in ${sourceBank.bankName}. Available: Rs. ${bankBalance.toLocaleString()}, Requested: Rs. ${amountNum.toLocaleString()}. Authorization required to allow overdraft.`
+        );
       }
 
       const cashAccountId =
@@ -216,6 +248,23 @@ export async function POST(request: Request) {
 
       if (!sourceBank || !destBank) {
         throw new ApiError(404, "BANK_NOT_FOUND", "One or both bank accounts were not found.");
+      }
+
+      // Check available bank account balance for transfer out
+      const sourceBankAgg = await prisma.bankTransaction.aggregate({
+        where: { bankAccountId: sourceBank.id, journalEntry: { status: { in: ["POSTED", "REVERSED"] } } },
+        _sum: { deposit: true, withdrawal: true },
+      });
+      const sourceBankBalance =
+        Number(sourceBank.openingBalance || 0) +
+        Number(sourceBankAgg._sum.deposit || 0) -
+        Number(sourceBankAgg._sum.withdrawal || 0);
+      if (!body.allowNegativeBalance && amountNum > sourceBankBalance && !context.permissions.includes("FINANCE_OVERRIDE")) {
+        throw new ApiError(
+          422,
+          "INSUFFICIENT_BANK_FUNDS",
+          `Insufficient funds in ${sourceBank.bankName}. Available: Rs. ${sourceBankBalance.toLocaleString()}, Requested: Rs. ${amountNum.toLocaleString()}. Authorization required to allow overdraft.`
+        );
       }
 
       debitAccountId = destBank.glAccountId;

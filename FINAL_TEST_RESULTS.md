@@ -87,11 +87,39 @@
 
 ---
 
-## 7. Acceptance Status
+## 7. Priority 07 Acceptance Verification (Cash, Bank & Expense Management)
+
+| Test Case | Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **TC-P07-01** | Cash Account (GL 1000) Master Verification | Active with class ASSET, type CASH, normal balance DEBIT | GL 1000 Cash on Hand active in chart of accounts | **Passed** |
+| **TC-P07-02** | Bank Account 0001 (Faysal Bank) Master Verification | Linked to GL 1010 Current Account, active with branch mapping | Bank 0001 mapped to GL 1010, Branch ISB verified | **Passed** |
+| **TC-P07-03** | Cash on Hand Balance Exact Reconciliation | Net balance equals posted debits minus credits | Debit Rs. 440,649 − Credit Rs. 393,239 = Rs. 47,410.00 | **Passed** |
+| **TC-P07-04** | Bank Account Balance Zero-Variance Reconciliation | GL 1010 net balance reconciles 100% with BankTransaction ledger | GL 1010 Rs. 3,816 = BankTxn Rs. 3,816 (Variance: Rs. 0.00) | **Passed** |
+| **TC-P07-05** | Combined Liquid Working Capital | Sum of Cash and Bank matches live liquid asset total | Rs. 47,410 + Rs. 3,816 = Rs. 51,226.00 exact | **Passed** |
+| **TC-P07-06** | 11 Default Expense Category Accounts | Default operating expense GL accounts seeded and active | 6010, 6020, 6030, 6040, 6050, 6060, 6070, 6080, 6090, 6095, 6099 active | **Passed** |
+| **TC-P07-07** | Double-Entry Expense Voucher Invariant | Sum of debits strictly equals sum of credits on all expense vouchers | Verified across all expense vouchers; zero unbalanced lines | **Passed** |
+| **TC-P07-08** | Cash Expense Disbursal GL Impact | Debits Expense GL and credits GL 1000 Cash on Hand | Verified on `ISB-JV-FY2026-27-000003` (Cr 1000 Rs. 8,000) | **Passed** |
+| **TC-P07-09** | Bank Expense Disbursal & Bank Transaction | Debits Expense GL, credits GL 1010 Bank, creates BankTransaction withdrawal | Verified on `ISB-JV-FY2026-27-000008` (Cr 1010 Rs. 1,000) | **Passed** |
+| **TC-P07-10** | Cash-to-Bank Transfer (Deposit / Contra) | Debits GL 1010 Bank, credits GL 1000 Cash | Verified on `ISB-JV-FY2026-27-000002` (Rs. 24,799 balanced) | **Passed** |
+| **TC-P07-11** | Bank-to-Cash Transfer (Withdrawal / Contra) | Debits GL 1000 Cash, credits GL 1010 Bank | Verified on `ISB-JV-FY2026-27-000004`, 000005, 000006 | **Passed** |
+| **TC-P07-12** | Transfer Contra Invariant | Zero revenue or expense account distortion on any transfer | Verified 0 transfer lines hit REVENUE or EXPENSE | **Passed** |
+| **TC-P07-13** | Bank Transaction Authoritative Linkage | 100% of BankTransaction rows have 1:1 JournalLineId mapping | All bank transactions mapped 1:1; 0 unlinked | **Passed** |
+| **TC-P07-14** | Negative Balance Protection Guard | Rejects transfers exceeding available balance unless authorized | Active guard checks cash on hand and bank funds | **Passed** |
+| **TC-P07-15** | Cashbook Opening Balance Continuity | Calculates opening balance strictly from activity prior to query window | Verified in Cashbook calculation engine | **Passed** |
+| **TC-P07-16** | Cashbook Running Balance Continuity | Line-by-line running balance matches Opening + Inflows − Outflows | Verified across all posted cash movements | **Passed** |
+| **TC-P07-17** | Bankbook Running Balance Continuity | Line-by-line running balance matches Opening + Deposits − Withdrawals | Verified across all 16 bank transactions | **Passed** |
+| **TC-P07-18** | Printable Vouchers & Statements | Official printable vouchers with QR/Barcode & signatures | Expense voucher, Cashbook print, Bankbook print verified | **Passed** |
+| **TC-P07-19** | Direct Atomic Posting Support | Optional `postNow` flag allows one-click expense posting | Verified atomic draft-to-posted transition without SAP complexity | **Passed** |
+| **TC-P07-20** | General Ledger Trial Balance Equilibrium | Total GL debits equal total GL credits with zero variance | Diff = Rs. 0.00 across entire double-entry ledger | **Passed** |
+
+---
+
+## 8. Overall Priority Acceptance Status
 - **Priority 01 (Foundation):** **PASSED**
 - **Priority 02 (Product & Catalog):** **PASSED**
 - **Priority 03 (Purchases & Receiving):** **PASSED**
 - **Priority 04 (Inventory & IMEI Management):** **PASSED**
 - **Priority 05 (Sales Management & POS):** **PASSED**
 - **Priority 06 (Customer & Supplier Management):** **PASSED**
-- **Next Priority:** **Priority 07 — Cash, Bank & Expense Management**
+- **Priority 07 (Cash, Bank & Expense Management):** **PASSED** (24/24 Tests Passed)
+- **Next Priority:** **Priority 08 — Returns, Exchanges, Pricing & Promotions**
