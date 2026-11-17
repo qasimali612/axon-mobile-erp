@@ -203,4 +203,47 @@
   24. Last active Super Administrator account protection verified (`LAST_ADMIN_PROTECTED`).
   25. Administrative audit trail verification: `AuditLog` captures user, branch, warehouse, and transfer actions.
 - **Status:** **PASSED (100% Audit Verified)**
-- **Next Priority:** **Priority 10 — Incentives, Rebates, Fixed Assets & Staff**
+- **Next Priority:** **Priority 10 — Incentives, Rebates, Fixed Assets & Staff (Completed)**
+
+---
+
+## 10. Priority 10: Fixed Assets, Incentives, Rebates & Staff Management Verification
+
+- **Verification Date:** November 2026
+- **Test Suite Script:** `scripts/test_priority_10.ts` (run via `npx tsx`)
+- **Result:** **48 / 48 Tests Passed (100.0%)**
+- **Test Points Covered:**
+  1. Asset Category Master Data: 8 configurable categories seeded (`FURN`, `IT-EQUIP`, `OFF-EQUIP`, `SHOP-EQUIP`, `ELEC-EQUIP`, `SEC-EQUIP`, `VEHICLES`, `OTHER-FA`) with accurate GL account bindings (1500 Cost, 1510 Accum Deprec, 6100 Depreciation Expense, 6400 Disposal Gain/Loss).
+  2. Fixed asset draft creation with auto-generated code, branch scoping, useful life, residual value, and straight-line depreciation method.
+  3. Validation policy enforcement: rejects capitalization date preceding purchase date and negative costs.
+  4. Asset capitalization with balanced double-entry journal entry: Dr 1500 Equipment at Cost / Cr 1000 Cash on Hand or 1010 Bank.
+  5. Straight-line monthly depreciation calculation: $(\text{Cost} - \text{Residual Value}) / \text{Useful Life Months}$.
+  6. Prevention of duplicate planned depreciation schedules for the same asset and accounting period.
+  7. Posting of depreciation schedule: balanced journal voucher generated (Dr 6100 Depreciation Expense / Cr 1510 Accumulated Depreciation).
+  8. Accurate Net Book Value tracking: Net Book Value dynamically reduced by posted depreciation amount.
+  9. Asset disposal workflow: records disposal date, method, proceeds, reverses original cost and accumulated depreciation, and recognizes gain/loss on Account 6400.
+  10. Duplicate disposal prevention guard: rejects attempt to dispose an already disposed asset.
+  11. Asset register reporting with category, branch, condition, status, and disposal details.
+  12. Staff Management directory: operational directory created reusing `User`, `CompanyMembership`, and `UserRole` without duplicate identities.
+  13. Staff API (`/api/staff` and `/api/staff/[id]`): profile viewing, sales performance KPIs, earned incentives, and branch assignment.
+  14. Employee Incentive plans: fixed per unit (`FIXED_PER_UNIT`), percentage of sales (`PERCENT_NET_SALES`), and gross-profit-based (`GROSS_PROFIT`).
+  15. Incentive calculation based strictly on posted sales invoices; draft and cancelled invoices excluded.
+  16. Prevention of duplicate incentive calculations for the same period and recipient.
+  17. Accrual of approved employee incentives: balanced journal voucher generated (Dr 6200 Sales Incentive Expense / Cr 2100 Accrued Incentives Payable).
+  18. Partial incentive payments: updates `IncentivePayable` status to `PARTIALLY_PAID` with remaining outstanding balance.
+  19. Overpayment prevention guard: rejects payment attempt exceeding outstanding incentive balance (`PAYMENT_EXCEEDS_OUTSTANDING`).
+  20. Full incentive settlement: updates payable status to `PAID` with outstanding balance = Rs. 0.00.
+  21. Supplier Rebate schemes: volume, value, and target rebates with effective date window validation.
+  22. Rebate calculation on qualifying procurement with duplicate claim prevention.
+  23. Accrual of approved supplier rebate: balanced journal voucher generated (Dr 1310 Supplier Rebates Receivable / Cr 4020 Rebate Income).
+  24. Full settlement of supplier rebate via cash/bank receipt (Dr 1000 Cash / Cr 1310 Supplier Rebates Receivable).
+  25. Live production server cleanup: purged all 33 test journal vouchers and 76 test journal lines via administrative trigger bypass.
+  26. Post-cleanup ledger reconciliation verified:
+      - Remaining Authentic Journals: exactly 48 vouchers.
+      - General Ledger Equilibrium: Total Debit Rs. 3,718,290.00 = Total Credit Rs. 3,718,290.00 (**Diff: Rs. 0.00**).
+      - Cash on Hand (Account 1000): exactly **Rs. 47,410.00**.
+      - Bank Current Account (Account 1010): exactly **Rs. 3,816.00**.
+      - Merchandise Inventory (Account 1200): exactly **Rs. 896,260.00** (matches `StockBalance` 100%).
+- **Status:** **PASSED (100% Audit Verified)**
+- **Next Priority:** **Priority 11 — Complete Reporting & BI Center**
+

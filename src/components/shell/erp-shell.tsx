@@ -180,6 +180,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
     label: "Control",
     items: [
       { label: "Approvals queue", href: "/approvals", icon: FileCheck2 },
+      { label: "Staff directory", href: "/staff", icon: Users, permission: "access.user.view" },
       { label: "Users", href: "/access/users", icon: Users, permission: "access.user.view" },
       { label: "Roles & access", href: "/access/roles", icon: ShieldCheck, permission: "access.role.view" },
       { label: "Database backup & restore", href: "/settings/backup", icon: Database, permission: "backup.manage" },

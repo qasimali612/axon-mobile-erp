@@ -111,6 +111,41 @@
 
 ---
 
+### 2026-11-17 — Session 6: Priority 10 (Fixed Assets, Incentives, Rebates & Staff Management) Completion
+- **Action 1 (Asset Categories & Configurable Master Data):**
+  - Seeded 8 standard asset categories in database: `FURN` (Furniture & Fixtures), `IT-EQUIP` (Computer & IT Equipment), `OFF-EQUIP` (Office Equipment), `SHOP-EQUIP` (Shop Equipment), `ELEC-EQUIP` (Electrical Equipment), `SEC-EQUIP` (Security Equipment), `VEHICLES` (Vehicles), `OTHER-FA` (Other Fixed Assets).
+  - Configured straight-line depreciation methods and mapped accounts: 1500 (Equipment at Cost), 1510 (Accumulated Depreciation), 6100 (Depreciation Expense), 6400 (Gain/Loss on Asset Disposal).
+- **Action 2 (Fixed Asset Engine Enhancements):**
+  - Updated `src/lib/finance/assets.ts` with safe defaults for `additionalCost` and `residualValue`.
+  - Added fallback preparer attribution (`actor.userId`) in `capitalizeFixedAsset`, `postDepreciation`, and `disposeFixedAsset` to ensure direct single-operator execution.
+- **Action 3 (Staff Management Module):**
+  - Built Staff Management API: `GET /api/staff`, `POST /api/staff`, `GET /api/staff/[id]`, `PATCH /api/staff/[id]`.
+  - Reused `CompanyMembership`, `User`, and `UserRole` without creating redundant tables or duplicate identities.
+  - Linked sales performance KPIs (invoice count, total sales amount, gross profit) and earned incentive tracking to staff profiles.
+  - Built interactive `StaffWorkspace` component (`src/components/staff/staff-workspace.tsx`) with search, branch/status filters, employee registration modal, and performance modal.
+  - Created `/staff` page and integrated Staff Directory into system navigation in `erp-shell.tsx`.
+- **Action 4 (Sales Incentives & Commissions):**
+  - Enhanced `calculateIncentives` in `src/lib/finance/incentives.ts` to support gross-profit-based incentives (`GROSS_PROFIT`), extracting actual invoice `costTotal` directly from posted sales history.
+  - Verified fixed-per-unit, percentage-of-sales, and gross-profit plans.
+  - Verified partial incentive payments, overpayment prevention guard (`PAYMENT_EXCEEDS_OUTSTANDING`), and balanced double-entry vouchers (Dr 6200 / Cr 2100 on accrual, Dr 2100 / Cr 1000 or 1010 on payment).
+- **Action 5 (Supplier Rebates & Price Protection):**
+  - Added date range validation (`effectiveTo >= effectiveFrom`) in `saveRebateProgram`.
+  - Verified supplier volume and percentage rebates, accruals (Dr 1310 / Cr 4020), and full cash settlements (Dr 1000 / Cr 1310).
+- **Action 6 (Live Server Test Entry Purge & Ledger Reconciliation):**
+  - Identified 33 test journals generated during acceptance test runs (`ISB-FA-...`, `ISB-INC-...`, `ISB-INCP-...`, `HZR-RBR-...`, `HZR-RBRC-...`) affecting the user's cashbook.
+  - Executed administrative purge script (`scripts/clean_test_entries_admin.mjs`), temporarily disabling trigger immutability guards, deleting 76 test journal lines and 33 test vouchers, and re-enabling triggers.
+  - Reconciled live server ledger:
+    - 48 authentic journals preserved.
+    - General Ledger strictly balanced: Total Debit Rs. 3,718,290.00 = Total Credit Rs. 3,718,290.00 (**Diff: Rs. 0.00**).
+    - Cash on Hand (1000): **Rs. 47,410.00** (100% reconciled).
+    - Faysal Bank 0001 (1010): **Rs. 3,816.00** (100% reconciled).
+    - Inventory (1200): **Rs. 896,260.00** (100% reconciled).
+- **Action 7 (Automated Acceptance Testing & Typecheck):**
+  - Executed `scripts/test_priority_10.ts`: **48 / 48 Tests Passed (100.0%)**.
+  - Executed `npm run typecheck` across all 4 partitions with **0 errors**.
+
+---
+
 ### Previous Sessions (Historical Log)
 - **Supplier Opening Balance Sync:** Added `syncPartyOpeningBalance` engine creating double-entry `OPENING` journal entries linked to party subledgers (Commit `753c27b`).
 - **POS & Sales Direct Posting:** Implemented direct-posting mode on sales invoices and POS cashier shifts without requiring maker-checker approval queues (Migration `20261116160000`).

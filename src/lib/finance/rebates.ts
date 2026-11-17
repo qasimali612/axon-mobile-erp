@@ -41,6 +41,11 @@ async function requireAccount(tx: Prisma.TransactionClient, companyId: string, i
 }
 
 export async function saveRebateProgram(actor: RebateActor, input: RebateProgramInput, id?: string) {
+  const effectiveFrom = toDate(input.effectiveFrom);
+  const effectiveTo = toDate(input.effectiveTo);
+  if (effectiveTo < effectiveFrom) {
+    throw new ApiError(422, "INVALID_DATE_RANGE", "Program end date cannot precede start date.");
+  }
   const receivable = input.direction === "RECEIVABLE";
   await prisma.$transaction(async (tx) => {
     await requireAccount(tx, actor.companyId, input.primaryAccountId, "Primary account", receivable ? ["REVENUE"] : ["EXPENSE"]);
@@ -58,8 +63,8 @@ export async function saveRebateProgram(actor: RebateActor, input: RebateProgram
     direction: input.direction as RebateDirection,
     supplierId: input.supplierId ?? null,
     customerId: input.customerId ?? null,
-    effectiveFrom: toDate(input.effectiveFrom),
-    effectiveTo: toDate(input.effectiveTo),
+    effectiveFrom,
+    effectiveTo,
     calculationMethod: input.calculationMethod,
     rate: input.rate ? decimal(input.rate) : null,
     fixedAmount: input.fixedAmount ? decimal(input.fixedAmount) : null,
@@ -350,7 +355,7 @@ export async function accrueRebate(actor: RebateActor, id: string, input: { post
 
     const journal = await postSystemJournal(tx, {
       actor,
-      preparedById: calculation.calculatedById ?? "",
+      preparedById: calculation.calculatedById || actor.userId,
       branchId: branch.id,
       postingDate,
       sourceModule: "REBATE",
@@ -417,7 +422,7 @@ export async function settleRebate(
 
     const journal = await postSystemJournal(tx, {
       actor,
-      preparedById: calculation.approvedById ?? calculation.calculatedById ?? "",
+      preparedById: calculation.approvedById || calculation.calculatedById || actor.userId,
       branchId,
       postingDate: settlementDate,
       sourceModule: "REBATE",

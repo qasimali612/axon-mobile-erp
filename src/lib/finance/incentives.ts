@@ -47,6 +47,7 @@ type Bucket = {
   recipientName: string;
   netSales: Prisma.Decimal;
   quantity: Prisma.Decimal;
+  cogs: Prisma.Decimal;
 };
 
 async function assertAccounts(tx: Prisma.TransactionClient, companyId: string, entries: { id: string; label: string; classes: string[] }[]) {
@@ -110,7 +111,7 @@ async function collectBuckets(tx: Prisma.TransactionClient, plan: { companyId: s
   const invoices = await tx.salesInvoice.findMany({
     where: { companyId: plan.companyId, status: "POSTED", invoiceDate: { gte: periodStart, lte: periodEnd }, ...scope },
     select: {
-      id: true, branchId: true, customerId: true, salespersonId: true, subtotal: true, discountTotal: true,
+      id: true, branchId: true, customerId: true, salespersonId: true, subtotal: true, discountTotal: true, costTotal: true,
       customer: { select: { name: true } }, salesperson: { select: { fullName: true } }, branch: { select: { code: true, name: true } },
     },
     take: 20_000,
@@ -123,7 +124,7 @@ async function collectBuckets(tx: Prisma.TransactionClient, plan: { companyId: s
   const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
 
   const buckets = new Map<string, Bucket>();
-  const push = (input: { branchId: string; branchName: string; salespersonId: string | null; salespersonName: string | null; customerId: string; customerName: string }, netSales: Prisma.Decimal, quantity: Prisma.Decimal) => {
+  const push = (input: { branchId: string; branchName: string; salespersonId: string | null; salespersonName: string | null; customerId: string; customerName: string }, netSales: Prisma.Decimal, quantity: Prisma.Decimal, cogs: Prisma.Decimal = zero()) => {
     let recipientUserId: string | null = null;
     let recipientCustomerId: string | null = null;
     let recipientName = "";
@@ -147,9 +148,11 @@ async function collectBuckets(tx: Prisma.TransactionClient, plan: { companyId: s
       recipientName,
       netSales: zero(),
       quantity: zero(),
+      cogs: zero(),
     };
     bucket.netSales = bucket.netSales.plus(netSales);
     bucket.quantity = bucket.quantity.plus(quantity);
+    bucket.cogs = bucket.cogs.plus(cogs);
     buckets.set(key, bucket);
   };
 
@@ -160,6 +163,7 @@ async function collectBuckets(tx: Prisma.TransactionClient, plan: { companyId: s
       { branchId: invoice.branchId, branchName: `${invoice.branch.code} · ${invoice.branch.name}`, salespersonId: invoice.salespersonId, salespersonName: invoice.salesperson?.fullName ?? null, customerId: invoice.customerId, customerName: invoice.customer.name },
       net,
       quantityByInvoice.get(invoice.id) ?? zero(),
+      invoice.costTotal ?? zero(),
     );
   }
 
@@ -202,6 +206,8 @@ async function collectBuckets(tx: Prisma.TransactionClient, plan: { companyId: s
 function evaluate(plan: { incentiveType: string; rate: Prisma.Decimal | null; fixedAmount: Prisma.Decimal | null; minimumTarget: Prisma.Decimal; maximumIncentive: Prisma.Decimal | null }, bucket: Bucket) {
   const netSales = bucket.netSales;
   const quantity = bucket.quantity;
+  const cogs = bucket.cogs ?? zero();
+  const grossProfit = netSales.minus(cogs);
   let amount = zero();
   let eligible = true;
   let reason: string | null = null;
@@ -218,6 +224,13 @@ function evaluate(plan: { incentiveType: string; rate: Prisma.Decimal | null; fi
       reason = "BELOW_MINIMUM_TARGET";
     } else {
       amount = netSales.minus(plan.minimumTarget).mul(plan.rate ?? zero()).div(100);
+    }
+  } else if ((plan.incentiveType as string) === "GROSS_PROFIT") {
+    if (grossProfit.lt(plan.minimumTarget)) {
+      eligible = false;
+      reason = "BELOW_MINIMUM_TARGET";
+    } else {
+      amount = grossProfit.mul(plan.rate ?? zero()).div(100);
     }
   } else {
     if (netSales.lt(plan.minimumTarget)) {
@@ -241,6 +254,8 @@ function evaluate(plan: { incentiveType: string; rate: Prisma.Decimal | null; fi
       fixedAmount: plan.fixedAmount?.toString() ?? null,
       minimumTarget: plan.minimumTarget.toString(),
       netSales: netSales.toDecimalPlaces(4).toString(),
+      cogs: cogs.toDecimalPlaces(4).toString(),
+      grossProfit: grossProfit.toDecimalPlaces(4).toString(),
       quantity: quantity.toDecimalPlaces(4).toString(),
       eligible,
       ineligibilityReason: reason,
@@ -349,7 +364,7 @@ export async function accrueIncentive(actor: IncentiveActor, id: string, input: 
 
     const journal = await postSystemJournal(tx, {
       actor,
-      preparedById: calculation.calculatedById ?? "",
+      preparedById: calculation.calculatedById || actor.userId,
       branchId: calculation.branchId,
       postingDate,
       sourceModule: "INCENTIVE",
@@ -401,7 +416,7 @@ export async function payIncentive(actor: IncentiveActor, payableId: string, inp
 
     const journal = await postSystemJournal(tx, {
       actor,
-      preparedById: payable.calculation.approvedById ?? "",
+      preparedById: payable.calculation.approvedById || actor.userId,
       branchId: payable.calculation.branchId,
       postingDate: paymentDate,
       sourceModule: "INCENTIVE",

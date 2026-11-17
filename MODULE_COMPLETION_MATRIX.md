@@ -29,10 +29,10 @@
 | **17** | Accounts Receivable | P06 | `Customer`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |
 | **18** | Accounts Payable | P06 | `Supplier`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |
 | **19** | Cash & Bank Management | P07 | `BankAccount`, `BankTransaction` | `/api/finance/bank-accounts` | `/(erp)/finance/banking` | **Passed** | Running balance & professional print verified. |
-| **20** | Fixed Asset Management | P10 | `FixedAsset`, `AssetDepreciation`| `/api/finance/assets` | `/(erp)/finance/assets` | **Implemented** | Asset register, depreciation, disposal. |
-| **21** | Sales Incentive Management | P10 | `IncentivePlan`, `IncentivePayable`| `/api/finance/incentives` | `/(erp)/finance/incentives` | **Implemented** | Salesperson targets & commission calculation. |
-| **22** | Received Incentive Mgmt | P10 | `ReceivedIncentive` | `/api/finance/incentives` | `/(erp)/finance/incentives` | **Implemented** | Brand / vendor incentive claims. |
-| **23** | Rebate Management | P10 | `RebateProgram`, `RebateReceivable`| `/api/finance/rebates` | `/(erp)/finance/rebates` | **Implemented** | Supplier rebates & price protection. |
+| **20** | Fixed Asset Management | P10 | `FixedAsset`, `AssetDepreciation`| `/api/finance/assets` | `/(erp)/finance/assets` | **Passed** | Asset register, depreciation, disposal, 8 categories seeded. |
+| **21** | Sales Incentive Management | P10 | `IncentivePlan`, `IncentivePayable`| `/api/finance/incentives` | `/(erp)/finance/incentives` | **Passed** | Salesperson targets & commission calculation (unit, % sales, % GP), partial payments. |
+| **22** | Received Incentive Mgmt | P10 | `ReceivedIncentive` | `/api/finance/incentives` | `/(erp)/finance/incentives` | **Passed** | Brand / vendor incentive claims & receipts. |
+| **23** | Rebate Management | P10 | `RebateProgram`, `RebateReceivable`| `/api/finance/rebates` | `/(erp)/finance/rebates` | **Passed** | Supplier rebates & price protection, accrual & settlement. |
 | **24** | Budget Management | P10 | `Budget`, `BudgetLine` | `/api/finance/budgets` | `/(erp)/finance/budgets` | **Implemented** | Fiscal budgets & variance reporting. |
 | **25** | Tax Management | P07 | `TaxRule` | `/api/catalog/masters` | `/(erp)/catalog/masters` | **Implemented** | Configurable tax rates & GL mapping. |
 | **26** | Accounting Period Mgmt | P07 | `FiscalYear`, `AccountingPeriod` | `/api/finance/periods` | `/(erp)/finance/periods` | **Implemented** | Period locking & closing controls. |

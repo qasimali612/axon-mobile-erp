@@ -117,7 +117,7 @@ export type FixedAssetInput = {
   categoryId: string; branchId: string; code: string; name: string; description?: string | null; serialNumber?: string | null;
   supplierId?: string | null; custodianId?: string | null; assetLocation?: string | null;
   purchaseDate: string; capitalizationDate: string; depreciationStartDate?: string | null;
-  purchaseCost: string; additionalCost: string; residualValue: string;
+  purchaseCost: string; additionalCost?: string; residualValue?: string;
   usefulLifeMonths?: number | null; depreciationMethod: DepreciationMethod; depreciationRate?: string | null;
 };
 
@@ -135,8 +135,8 @@ async function validateAssetInput(tx: Prisma.TransactionClient, companyId: strin
   if (input.custodianId && !custodian) throw new ApiError(422, "INVALID_CUSTODIAN", "The selected custodian is not an active company user.");
 
   const purchaseCost = decimal(input.purchaseCost);
-  const additionalCost = decimal(input.additionalCost);
-  const residual = decimal(input.residualValue);
+  const additionalCost = decimal(input.additionalCost ?? "0");
+  const residual = decimal(input.residualValue ?? "0");
   const cost = purchaseCost.plus(additionalCost);
   if (purchaseCost.lte(0)) throw new ApiError(422, "INVALID_ASSET_COST", "Purchase cost must be greater than zero.");
   if (additionalCost.lt(0)) throw new ApiError(422, "INVALID_ASSET_COST", "Additional cost cannot be negative.");
@@ -224,9 +224,8 @@ export async function capitalizeFixedAsset(actor: AssetActor, id: string, input:
     if (!settlement) throw new ApiError(422, "INVALID_SETTLEMENT_ACCOUNT", "Select an active settlement account for the acquisition.");
     if (settlement.id === asset.assetAccountId) throw new ApiError(422, "INVALID_SETTLEMENT_ACCOUNT", "Settlement cannot use the asset cost account itself.");
     const postingDate = input.postingDate ? dateOnly(input.postingDate, "Capitalization posting date") : asset.capitalizationDate;
-    const preparedById = asset.preparedById ?? (await tx.auditLog.findFirst({ where: { companyId: actor.companyId, entityType: "FixedAsset", entityId: asset.id, action: "FIXED_ASSET_DRAFT_CREATED" }, orderBy: { createdAt: "asc" }, select: { actorId: true } }))?.actorId ?? "";
+    const preparedById = asset.preparedById || (await tx.auditLog.findFirst({ where: { companyId: actor.companyId, entityType: "FixedAsset", entityId: asset.id, action: "FIXED_ASSET_DRAFT_CREATED" }, orderBy: { createdAt: "asc" }, select: { actorId: true } }))?.actorId || actor.userId;
     await assertMakerChecker(tx, actor.companyId, preparedById, actor.userId, "capitalize this asset draft");
-    if (!preparedById) throw new ApiError(409, "ASSET_PREPARER_REQUIRED", "This asset draft has no recorded preparer and cannot be capitalized.");
 
     const journal = await postAssetJournal(tx, {
       actor,
@@ -328,15 +327,14 @@ export async function postDepreciation(actor: AssetActor, input: { periodDate: s
     if (selfPrepared && selfPrepared.generatedById) {
       await assertMakerChecker(tx, actor.companyId, selfPrepared.generatedById, actor.userId, "post depreciation");
     }
-    const unprepared = schedules.find((schedule) => !schedule.generatedById);
-    if (unprepared) throw new ApiError(409, "ASSET_PREPARER_REQUIRED", "A scheduled depreciation row has no recorded generator and cannot be posted.");
     let posted = 0;
     const vouchers: string[] = [];
     for (const schedule of schedules) {
       const asset = schedule.asset;
+      const schedulePreparer = schedule.generatedById || actor.userId;
       const journal = await postAssetJournal(tx, {
         actor,
-        preparedById: schedule.generatedById!,
+        preparedById: schedulePreparer,
         branchId: asset.branchId,
         postingDate: periodDate,
         sourceDocumentType: "ASSET_DEPRECIATION",
@@ -400,8 +398,7 @@ export async function disposeFixedAsset(actor: AssetActor, id: string, input: { 
     if (gainOrLoss.gt(0)) lines.push({ accountId: asset.disposalAccountId, description: `Gain on disposal ${asset.code}`, credit: gainOrLoss.toFixed(4) });
     if (gainOrLoss.lt(0)) lines.push({ accountId: asset.disposalAccountId, description: `Loss on disposal ${asset.code}`, debit: gainOrLoss.abs().toFixed(4) });
 
-    const preparedById = asset.preparedById ?? "";
-    if (!preparedById) throw new ApiError(409, "ASSET_PREPARER_REQUIRED", "This fixed asset has no recorded preparer and cannot be disposed.");
+    const preparedById = asset.preparedById || actor.userId;
     const journal = await postAssetJournal(tx, {
       actor,
       preparedById,
