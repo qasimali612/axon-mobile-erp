@@ -8,7 +8,10 @@ import {
   ArrowUpRight,
   Banknote,
   CheckCircle2,
+  FileSpreadsheet,
+  FileUp,
   Landmark,
+  Layers,
   Link2,
   Plus,
   Printer,
@@ -16,6 +19,7 @@ import {
   Send,
   ShieldCheck,
   Unlink,
+  Wallet,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -79,27 +83,135 @@ export function BankingWorkspace({ currency, permissions }: Props) {
     return { id: account.id, balance, unreconciled, count: rows.length };
   }), [accounts, transactions]);
 
+  const totalCashBalance = useMemo(
+    () => cashAccounts.reduce((sum, c) => sum + Number(c.balance || 0), 0),
+    [cashAccounts]
+  );
+  const totalBankBalance = useMemo(
+    () => ledgerTotals.reduce((sum, a) => sum + Number(a.balance || 0), 0),
+    [ledgerTotals]
+  );
+  const totalLiquidity = totalCashBalance + totalBankBalance;
+  const totalUnreconciled = useMemo(
+    () => transactions.filter((row) => row.reconciliationStatus === "UNRECONCILED").length,
+    [transactions]
+  );
+
   return (
     <>
       <header className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <div className="mb-2 flex items-center gap-2"><span className="kicker">Cash and treasury</span><Badge tone="green">Posted ledger</Badge></div>
-          <h1 className="text-2xl font-bold text-slate-950 sm:text-[30px]">Banking and reconciliation</h1>
-          <p className="mt-1.5 text-sm text-slate-500">Bank masters post to one asset ledger account. Statements never create journals; they match posted ledger transactions so each reconciliation is evidence-based.</p>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="kicker">Cash and treasury</span>
+            <Badge tone="green">Authoritative Double-Entry GL</Badge>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-[30px]">Banking & Cash Treasury</h1>
+          <p className="mt-1.5 text-sm text-slate-500 max-w-3xl">
+            Live double-entry cash and bank ledgers. Statements serve as external audit evidence to reconcile posted
+            transactions without altering the authoritative General Ledger.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setTransferOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
             <ArrowLeftRight className="h-4 w-4" /> Deposit / Withdraw / Transfer
           </Button>
-          {tab === "accounts" && permissions.manageAccount ? <Button onClick={() => setAccountEditor("new")}><Plus className="h-4 w-4" />New bank account</Button> : null}
-          {tab === "statements" && permissions.prepare ? <Button onClick={() => setStatementEditor(true)}><Plus className="h-4 w-4" />Import statement</Button> : null}
-          <Button variant="outline" onClick={() => void load()} loading={loading}><RefreshCw className="h-4 w-4" />Refresh</Button>
+          {tab === "accounts" && permissions.manageAccount ? (
+            <Button onClick={() => setAccountEditor("new")}>
+              <Plus className="h-4 w-4" /> New bank account
+            </Button>
+          ) : null}
+          {tab === "statements" && permissions.prepare ? (
+            <Button onClick={() => setStatementEditor(true)}>
+              <FileUp className="h-4 w-4" /> Import statement
+            </Button>
+          ) : null}
+          <Button variant="outline" onClick={() => void load()} loading={loading}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
         </div>
       </header>
 
+      {/* Top Treasury Summary Cards */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="surface p-4">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cash on Hand</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+              <Wallet className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">
+            {formatMoney(String(totalCashBalance), currency)}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {cashAccounts.length} Cash Account{cashAccounts.length === 1 ? "" : "s"} (Account 1000)
+          </p>
+        </div>
+
+        <div className="surface p-4">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Bank Accounts</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600">
+              <Landmark className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">
+            {formatMoney(String(totalBankBalance), currency)}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {accounts.length} Active Master{accounts.length === 1 ? "" : "s"} (GL 1010)
+          </p>
+        </div>
+
+        <div className="surface p-4">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Combined Liquidity</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+              <Layers className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-indigo-950">
+            {formatMoney(String(totalLiquidity), currency)}
+          </div>
+          <p className="mt-1 text-[11px] text-indigo-500 font-medium">Total Liquid Working Capital</p>
+        </div>
+
+        <div className="surface p-4">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Reconciliation Status</span>
+            <span
+              className={`grid h-8 w-8 place-items-center rounded-lg ${
+                totalUnreconciled > 0 ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span
+              className={`text-2xl font-bold ${
+                totalUnreconciled > 0 ? "text-amber-700" : "text-emerald-700"
+              }`}
+            >
+              {totalUnreconciled}
+            </span>
+            <span className="text-xs text-slate-400">unreconciled lines</span>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {transactions.length} Total Bank Transactions Posted
+          </p>
+        </div>
+      </div>
+
       <div className="surface mb-5 flex items-center gap-2 p-2">
         {(["accounts", "statements", "ledger", "transfers"] as const).map((item) => (
-          <button key={item} onClick={() => setTab(item)} className={`rounded-lg px-4 py-2 text-xs font-bold ${tab === item ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+          <button
+            key={item}
+            onClick={() => setTab(item)}
+            className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+              tab === item ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100/70"
+            }`}
+          >
             {item === "accounts"
               ? `Bank accounts (${accounts.length})`
               : item === "statements"
@@ -113,24 +225,67 @@ export function BankingWorkspace({ currency, permissions }: Props) {
 
       {tab === "accounts" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {loading && !accounts.length ? <div className="surface p-10 text-center text-xs text-slate-400">Loading bank accounts…</div> : null}
-          {!loading && !accounts.length ? <div className="surface p-10 text-center text-xs text-slate-400 md:col-span-2 xl:col-span-3">No bank accounts yet. Add the first operating account and link it to an existing asset ledger account.</div> : null}
+          {loading && !accounts.length ? (
+            <div className="surface p-10 text-center text-xs text-slate-400">Loading bank accounts…</div>
+          ) : null}
+          {!loading && !accounts.length ? (
+            <div className="surface p-10 text-center text-xs text-slate-400 md:col-span-2 xl:col-span-3">
+              No bank accounts yet. Add the first operating account and link it to an existing asset ledger account.
+            </div>
+          ) : null}
           {accounts.map((account) => {
             const totals = ledgerTotals.find((item) => item.id === account.id);
             return (
-              <section key={account.id} className="surface p-5">
+              <section key={account.id} className="surface p-5 hover:border-blue-200 transition">
                 <div className="flex items-start justify-between">
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-700"><Landmark className="h-5 w-5" /></span>
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-700">
+                    <Landmark className="h-5 w-5" />
+                  </span>
                   <Badge tone={account.isActive ? "green" : "slate"}>{account.isActive ? "Active" : "Inactive"}</Badge>
                 </div>
-                <p className="mt-4 text-xs font-bold text-slate-900">{account.code} · {account.bankName}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{account.accountTitle} · •••• {account.accountNumberLast4 || "—"}</p>
-                <p className="mt-4 text-2xl font-bold text-slate-950">{formatMoney(String(totals?.balance ?? 0), account.currencyCode || currency)}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{account.glAccount?.code} · {account.glAccount?.name}</p>
-                <p className="mt-1 text-[10px] text-slate-400">{account.branch?.code} · {account.branch?.name}</p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-slate-400">{totals?.unreconciled ?? 0} unreconciled of {totals?.count ?? 0}</span>
-                  {permissions.manageAccount ? <Button size="sm" variant="outline" onClick={() => setAccountEditor(account)}>Edit</Button> : <Button size="sm" variant="outline" onClick={() => { setTab("ledger"); setLedgerFilter({ bankAccountId: account.id, status: "" }); }}>Ledger</Button>}
+                <p className="mt-4 text-sm font-bold text-slate-900">
+                  {account.code} · {account.bankName}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {account.accountTitle} · •••• {account.accountNumberLast4 || "—"}
+                </p>
+                <p className="mt-4 text-2xl font-bold text-slate-950 font-mono">
+                  {formatMoney(String(totals?.balance ?? 0), account.currencyCode || currency)}
+                </p>
+                <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                  <p>
+                    <span className="font-semibold text-slate-700">GL Account:</span> {account.glAccount?.code} ·{" "}
+                    {account.glAccount?.name}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-700">Operating Branch:</span> {account.branch?.code} ·{" "}
+                    {account.branch?.name}
+                  </p>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <span className="text-[11px] font-medium text-slate-500">
+                    <span className={totals?.unreconciled ? "font-bold text-amber-700" : "text-emerald-700"}>
+                      {totals?.unreconciled ?? 0} unreconciled
+                    </span>{" "}
+                    of {totals?.count ?? 0}
+                  </span>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setTab("ledger");
+                        setLedgerFilter({ bankAccountId: account.id, status: "" });
+                      }}
+                    >
+                      View Ledger
+                    </Button>
+                    {permissions.manageAccount ? (
+                      <Button size="sm" variant="outline" onClick={() => setAccountEditor(account)}>
+                        Edit
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </section>
             );
@@ -143,22 +298,91 @@ export function BankingWorkspace({ currency, permissions }: Props) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] text-left">
               <thead className="bg-slate-50 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                <tr><th className="px-5 py-3">Bank / statement</th><th className="px-4 py-3">Period</th><th className="px-4 py-3 text-right">Opening</th><th className="px-4 py-3 text-right">Closing</th><th className="px-4 py-3 text-right">Matched</th><th className="px-4 py-3">Reconciliation</th><th className="px-5 py-3 text-right">Action</th></tr>
+                <tr>
+                  <th className="px-5 py-3">Bank / statement</th>
+                  <th className="px-4 py-3">Period</th>
+                  <th className="px-4 py-3 text-right">Opening</th>
+                  <th className="px-4 py-3 text-right">Closing</th>
+                  <th className="px-4 py-3 text-right">Matched</th>
+                  <th className="px-4 py-3">Reconciliation</th>
+                  <th className="px-5 py-3 text-right">Action</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {loading ? <tr><td colSpan={7} className="p-14 text-center text-xs text-slate-400">Loading statements…</td></tr>
-                  : !statements.length ? <tr><td colSpan={7} className="p-14 text-center text-xs text-slate-400">No statements imported yet. Import a bank statement to match posted transactions and reconcile the ledger.</td></tr>
-                    : statements.map((row) => (
-                      <tr key={row.id} className="text-xs">
-                        <td className="px-5 py-3.5"><b>{row.bankAccount?.code}</b><span className="block text-[10px] text-slate-500">{row.statementNumber || "Statement"} · {row.bankAccount?.bankName}</span></td>
-                        <td className="px-4 py-3.5 text-[10px] text-slate-500">{formatDate(row.periodStart)} → {formatDate(row.periodEnd)}</td>
-                        <td className="px-4 py-3.5 text-right font-mono text-[11px]">{formatMoney(String(row.openingBalance), row.bankAccount?.currencyCode || currency)}</td>
-                        <td className="px-4 py-3.5 text-right font-mono text-[11px] font-bold">{formatMoney(String(row.closingBalance), row.bankAccount?.currencyCode || currency)}</td>
-                        <td className="px-4 py-3.5 text-right"><span className={row.matchedLines === row.totalLines && row.totalLines > 0 ? "font-bold text-emerald-700" : "font-bold text-amber-700"}>{row.matchedLines}/{row.totalLines}</span></td>
-                        <td className="px-4 py-3.5">{row.reconciliation ? <Badge tone={row.reconciliation.status === "COMPLETED" ? "green" : row.reconciliation.status === "REOPENED" ? "amber" : "blue"}>{titleCase(row.reconciliation.status)}</Badge> : <Badge tone="slate">Not prepared</Badge>}</td>
-                        <td className="px-5 py-3.5 text-right"><Button size="sm" variant="outline" onClick={() => { setTab("statements"); setDetailId(row.id); }}>Open</Button></td>
-                      </tr>
-                    ))}
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="p-14 text-center text-xs text-slate-400">
+                      Loading statements…
+                    </td>
+                  </tr>
+                ) : !statements.length ? (
+                  <tr>
+                    <td colSpan={7} className="p-14 text-center text-xs text-slate-400">
+                      No statements imported yet. Import a bank statement (CSV/Excel) to match posted transactions and
+                      reconcile the ledger.
+                    </td>
+                  </tr>
+                ) : (
+                  statements.map((row) => (
+                    <tr key={row.id} className="text-xs hover:bg-slate-50/60">
+                      <td className="px-5 py-3.5">
+                        <b>{row.bankAccount?.code}</b>
+                        <span className="block text-[10px] text-slate-500">
+                          {row.statementNumber || "Statement"} · {row.bankAccount?.bankName}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-[10px] text-slate-500">
+                        {formatDate(row.periodStart)} → {formatDate(row.periodEnd)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-[11px]">
+                        {formatMoney(String(row.openingBalance), row.bankAccount?.currencyCode || currency)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-[11px] font-bold">
+                        {formatMoney(String(row.closingBalance), row.bankAccount?.currencyCode || currency)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <span
+                          className={
+                            row.matchedLines === row.totalLines && row.totalLines > 0
+                              ? "font-bold text-emerald-700"
+                              : "font-bold text-amber-700"
+                          }
+                        >
+                          {row.matchedLines}/{row.totalLines}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {row.reconciliation ? (
+                          <Badge
+                            tone={
+                              row.reconciliation.status === "COMPLETED"
+                                ? "green"
+                                : row.reconciliation.status === "REOPENED"
+                                ? "amber"
+                                : "blue"
+                            }
+                          >
+                            {titleCase(row.reconciliation.status)}
+                          </Badge>
+                        ) : (
+                          <Badge tone="slate">Not prepared</Badge>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setTab("statements");
+                            setDetailId(row.id);
+                          }}
+                        >
+                          Open & Match
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -168,32 +392,94 @@ export function BankingWorkspace({ currency, permissions }: Props) {
       {tab === "ledger" ? (
         <section className="surface overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
-            <select className={`${field} max-w-64`} value={ledgerFilter.bankAccountId} onChange={(event) => setLedgerFilter((current) => ({ ...current, bankAccountId: event.target.value }))}>
+            <select
+              className={`${field} max-w-64`}
+              value={ledgerFilter.bankAccountId}
+              onChange={(event) => setLedgerFilter((current) => ({ ...current, bankAccountId: event.target.value }))}
+            >
               <option value="">All bank accounts</option>
-              {accounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.bankName}</option>)}
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.code} · {account.bankName}
+                </option>
+              ))}
             </select>
-            <select className={`${field} max-w-48`} value={ledgerFilter.status} onChange={(event) => setLedgerFilter((current) => ({ ...current, status: event.target.value }))}>
-              <option value="">All statuses</option><option value="UNRECONCILED">Unreconciled</option><option value="RECONCILED">Reconciled</option>
+            <select
+              className={`${field} max-w-48`}
+              value={ledgerFilter.status}
+              onChange={(event) => setLedgerFilter((current) => ({ ...current, status: event.target.value }))}
+            >
+              <option value="">All statuses</option>
+              <option value="UNRECONCILED">Unreconciled</option>
+              <option value="RECONCILED">Reconciled</option>
             </select>
-            <span className="ml-auto text-[10px] text-slate-400">{filteredTransactions.length} posted transaction{filteredTransactions.length === 1 ? "" : "s"}</span>
+            <span className="ml-auto text-[11px] text-slate-500 font-medium">
+              {filteredTransactions.length} posted transaction{filteredTransactions.length === 1 ? "" : "s"}
+            </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left">
+            <table className="w-full min-w-[950px] text-left">
               <thead className="bg-slate-50 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                <tr><th className="px-5 py-3">Date / bank</th><th className="px-4 py-3">Voucher / reference</th><th className="px-4 py-3">Description</th><th className="px-4 py-3 text-right">Deposit</th><th className="px-4 py-3 text-right">Withdrawal</th><th className="px-5 py-3">Reconciliation</th></tr>
+                <tr>
+                  <th className="px-5 py-3">Date / Bank</th>
+                  <th className="px-4 py-3">Voucher / Source</th>
+                  <th className="px-4 py-3">Description & Reference</th>
+                  <th className="px-4 py-3 text-right">Deposit (Inflow)</th>
+                  <th className="px-4 py-3 text-right">Withdrawal (Outflow)</th>
+                  <th className="px-5 py-3 text-center">Status</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredTransactions.map((row) => (
-                  <tr key={row.id} className="text-xs">
-                    <td className="px-5 py-3"><span className="block text-slate-700">{formatDate(row.transactionDate)}</span><span className="text-[9px] text-slate-400">{row.bankAccount?.code}</span></td>
-                    <td className="px-4 py-3"><a href={`/finance/journals/${row.journalEntry?.id}`} className="font-semibold text-blue-700 hover:underline">{row.journalEntry?.voucherNumber}</a><span className="mt-0.5 block text-[9px] text-slate-400">{row.bankReference || "—"}</span></td>
-                    <td className="max-w-[280px] px-4 py-3 text-slate-600"><span className="block truncate">{row.description}</span></td>
-                    <td className="px-4 py-3 text-right font-semibold text-emerald-700">{Number(row.deposit) === 0 ? "—" : formatMoney(String(row.deposit), row.bankAccount?.currencyCode || currency)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-rose-700">{Number(row.withdrawal) === 0 ? "—" : formatMoney(String(row.withdrawal), row.bankAccount?.currencyCode || currency)}</td>
-                    <td className="px-5 py-3"><Badge tone={row.reconciliationStatus === "RECONCILED" ? "green" : "amber"}>{titleCase(row.reconciliationStatus)}</Badge></td>
+                  <tr key={row.id} className="text-xs hover:bg-slate-50/60">
+                    <td className="px-5 py-3">
+                      <span className="block font-medium text-slate-800">{formatDate(row.transactionDate)}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">{row.bankAccount?.code}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <a
+                          href={`/finance/journals/${row.journalEntry?.id}`}
+                          className="font-bold text-blue-700 hover:underline"
+                        >
+                          {row.journalEntry?.voucherNumber}
+                        </a>
+                        {row.journalEntry?.status === "REVERSED" ? (
+                          <Badge tone="red">Reversed</Badge>
+                        ) : null}
+                      </div>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">
+                        {row.journalEntry?.sourceModule
+                          ? titleCase(row.journalEntry.sourceModule.replace(/_/g, " "))
+                          : "General Ledger"}
+                      </span>
+                    </td>
+                    <td className="max-w-[280px] px-4 py-3">
+                      <span className="block truncate text-slate-700 font-medium">{row.description}</span>
+                      {row.bankReference ? (
+                        <span className="text-[10px] text-slate-400 font-mono">Ref: {row.bankReference}</span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">
+                      {Number(row.deposit) === 0 ? "—" : formatMoney(String(row.deposit), row.bankAccount?.currencyCode || currency)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-rose-700">
+                      {Number(row.withdrawal) === 0 ? "—" : formatMoney(String(row.withdrawal), row.bankAccount?.currencyCode || currency)}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      <Badge tone={row.reconciliationStatus === "RECONCILED" ? "green" : "amber"}>
+                        {titleCase(row.reconciliationStatus)}
+                      </Badge>
+                    </td>
                   </tr>
                 ))}
-                {!filteredTransactions.length ? <tr><td colSpan={6} className="py-14 text-center text-xs text-slate-400">No posted bank transactions match this filter.</td></tr> : null}
+                {!filteredTransactions.length ? (
+                  <tr>
+                    <td colSpan={6} className="py-14 text-center text-xs text-slate-400">
+                      No posted bank transactions match this filter.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -206,7 +492,7 @@ export function BankingWorkspace({ currency, permissions }: Props) {
             <div>
               <h2 className="text-sm font-bold text-slate-900">Contra Vouchers & Transfers</h2>
               <p className="mt-0.5 text-[11px] text-slate-500">
-                Cash deposits, withdrawals, and inter-bank transfers with balanced double-entry vouchers.
+                Cash withdrawals, cash deposits, and inter-bank transfers with balanced double-entry vouchers.
               </p>
             </div>
             <Button onClick={() => setTransferOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
@@ -214,67 +500,89 @@ export function BankingWorkspace({ currency, permissions }: Props) {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[950px] text-left">
+            <table className="w-full min-w-[1000px] text-left">
               <thead className="bg-slate-50 text-[9px] font-bold uppercase tracking-wider text-slate-400">
                 <tr>
                   <th className="px-5 py-3">Voucher #</th>
                   <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Transaction Direction</th>
                   <th className="px-4 py-3">Branch</th>
-                  <th className="px-4 py-3">Narration</th>
+                  <th className="px-4 py-3">Double-Entry Accounting</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {recentTransfers.map((t) => (
-                  <tr key={t.id} className="text-xs hover:bg-slate-50/60">
-                    <td className="px-5 py-3.5">
-                      <a href={`/finance/journals/${t.id}`} className="font-bold text-blue-700 hover:underline">
-                        {t.voucherNumber}
-                      </a>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600">{formatDate(t.postingDate)}</td>
-                    <td className="px-4 py-3.5">
-                      <Badge
-                        tone={
-                          t.sourceModule === "CASH_DEPOSIT"
-                            ? "green"
-                            : t.sourceModule === "CASH_WITHDRAWAL"
-                            ? "blue"
-                            : "purple"
-                        }
-                      >
-                        {t.sourceModule === "CASH_DEPOSIT"
-                          ? "Cash Deposit"
-                          : t.sourceModule === "CASH_WITHDRAWAL"
-                          ? "Cash Withdrawal"
-                          : "Bank Transfer"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600">{t.branch?.code}</td>
-                    <td className="px-4 py-3.5 text-slate-700 max-w-[280px] truncate" title={t.narration}>
-                      {t.narration}
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900">
-                      {formatMoney(t.totalDebit.toString(), currency)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge tone={t.status === "POSTED" ? "green" : "amber"}>{titleCase(t.status)}</Badge>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <a
-                        href={`/finance/journals/${t.id}/print`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        <Printer className="h-3 w-3" /> Print JV
-                      </a>
-                    </td>
-                  </tr>
-                ))}
+                {recentTransfers.map((t) => {
+                  const debitLine = t.lines?.find((l: Row) => Number(l.debit) > 0);
+                  const creditLine = t.lines?.find((l: Row) => Number(l.credit) > 0);
+                  const isWithdrawal = t.sourceModule === "CASH_WITHDRAWAL";
+                  const isDeposit = t.sourceModule === "CASH_DEPOSIT";
+
+                  return (
+                    <tr key={t.id} className="text-xs hover:bg-slate-50/60">
+                      <td className="px-5 py-3.5">
+                        <a href={`/finance/journals/${t.id}`} className="font-bold text-blue-700 hover:underline">
+                          {t.voucherNumber}
+                        </a>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">{formatDate(t.postingDate)}</td>
+                      <td className="px-4 py-3.5">
+                        <Badge
+                          tone={
+                            isDeposit
+                              ? "green"
+                              : isWithdrawal
+                              ? "blue"
+                              : "purple"
+                          }
+                        >
+                          {isDeposit
+                            ? "Cash Deposit (Cash → Bank)"
+                            : isWithdrawal
+                            ? "Cash Withdrawal (Bank → Cash)"
+                            : "Bank Transfer (Bank → Bank)"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600 font-semibold">{t.branch?.code}</td>
+                      <td className="px-4 py-3.5">
+                        <div className="font-semibold text-slate-900">
+                          {isWithdrawal
+                            ? "Cash drawn from Bank into Drawer"
+                            : isDeposit
+                            ? "Cash deposited into Bank from Drawer"
+                            : "Inter-bank Transfer"}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          Dr {debitLine?.account?.code || (isWithdrawal ? "1000" : "1010")} ({debitLine?.account?.name || (isWithdrawal ? "Cash on Hand" : "Current Account")}) · Cr{" "}
+                          {creditLine?.account?.code || (isWithdrawal ? "1010" : "1000")} ({creditLine?.account?.name || (isWithdrawal ? "Current Account" : "Cash on Hand")})
+                        </div>
+                        {t.narration ? (
+                          <div className="text-[10px] text-slate-400 italic mt-0.5 max-w-[280px] truncate" title={t.narration}>
+                            Narration: {t.narration}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-900">
+                        {formatMoney(t.totalDebit.toString(), currency)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <Badge tone={t.status === "POSTED" ? "green" : "amber"}>{titleCase(t.status)}</Badge>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <a
+                          href={`/finance/journals/${t.id}/print`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          <Printer className="h-3 w-3" /> Print JV
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!recentTransfers.length ? (
                   <tr>
                     <td colSpan={8} className="py-14 text-center text-xs text-slate-400">
@@ -344,21 +652,145 @@ function AccountEditor({ open, row, lookups, currency, onClose, onSaved }: { ope
   );
 }
 
-function StatementEditor({ open, accounts, currency, onClose, onSaved }: { open: boolean; accounts: Row[]; currency: string; onClose: () => void; onSaved: (id: string) => Promise<void> }) {
-  const [bankAccountId, setBankAccountId] = useState(""); const [statementNumber, setStatementNumber] = useState("");
-  const [periodStart, setPeriodStart] = useState(firstOfMonth()); const [periodEnd, setPeriodEnd] = useState(today());
-  const [openingBalance, setOpeningBalance] = useState("0"); const [closingBalance, setClosingBalance] = useState("0");
-  const [lines, setLines] = useState<Array<{ transactionDate: string; reference: string; description: string; deposit: string; withdrawal: string }>>([]);
+function parseStatementCsv(text: string) {
+  const rawRows = text.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+  if (!rawRows.length) return [];
+
+  const firstRow = rawRows[0];
+  const delim = [",", "\t", ";", "|"].reduce(
+    (best, curr) => (firstRow.split(curr).length > firstRow.split(best).length ? curr : best),
+    ","
+  );
+
+  const parsedLines: Array<{
+    transactionDate: string;
+    reference: string;
+    description: string;
+    deposit: string;
+    withdrawal: string;
+  }> = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const cols = rawRows[i].split(delim).map((c) => c.trim().replace(/^["']|["']$/g, ""));
+    if (cols.length < 3) continue;
+
+    const lower = cols.map((c) => c.toLowerCase());
+    if (
+      lower.some(
+        (c) =>
+          c.includes("date") ||
+          c.includes("particular") ||
+          c.includes("narration") ||
+          c.includes("balance") ||
+          c.includes("debit") ||
+          c.includes("credit")
+      )
+    ) {
+      continue;
+    }
+
+    let dateStr = cols[0];
+    const dmy = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) {
+      dateStr = `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    }
+
+    let ref = "";
+    let desc = "";
+    let deposit = "0";
+    let withdrawal = "0";
+
+    if (cols.length >= 5) {
+      ref = cols[1];
+      desc = cols[2];
+      deposit = cols[3].replace(/[^0-9.]/g, "") || "0";
+      withdrawal = cols[4].replace(/[^0-9.]/g, "") || "0";
+    } else if (cols.length === 4) {
+      desc = cols[1];
+      deposit = cols[2].replace(/[^0-9.]/g, "") || "0";
+      withdrawal = cols[3].replace(/[^0-9.]/g, "") || "0";
+    } else {
+      desc = cols[1];
+      deposit = cols[2].replace(/[^0-9.]/g, "") || "0";
+    }
+
+    if (desc || Number(deposit) > 0 || Number(withdrawal) > 0) {
+      parsedLines.push({
+        transactionDate: dateStr || today(),
+        reference: ref,
+        description: desc || "Bank transaction",
+        deposit: Number(deposit) > 0 ? deposit : "",
+        withdrawal: Number(withdrawal) > 0 ? withdrawal : "",
+      });
+    }
+  }
+  return parsedLines;
+}
+
+function StatementEditor({
+  open,
+  accounts,
+  currency,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  accounts: Row[];
+  currency: string;
+  onClose: () => void;
+  onSaved: (id: string) => Promise<void>;
+}) {
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [statementNumber, setStatementNumber] = useState("");
+  const [periodStart, setPeriodStart] = useState(firstOfMonth());
+  const [periodEnd, setPeriodEnd] = useState(today());
+  const [openingBalance, setOpeningBalance] = useState("0");
+  const [closingBalance, setClosingBalance] = useState("0");
+  const [lines, setLines] = useState<
+    Array<{ transactionDate: string; reference: string; description: string; deposit: string; withdrawal: string }>
+  >([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setBankAccountId(accounts[0]?.id || ""); setStatementNumber(""); setPeriodStart(firstOfMonth()); setPeriodEnd(today());
-    setOpeningBalance("0"); setClosingBalance("0"); setLines([]);
+    setBankAccountId(accounts[0]?.id || "");
+    setStatementNumber("");
+    setPeriodStart(firstOfMonth());
+    setPeriodEnd(today());
+    setOpeningBalance("0");
+    setClosingBalance("0");
+    setLines([]);
   }, [open, accounts]);
 
   const net = lines.reduce((sum, line) => sum + Number(line.deposit || 0) - Number(line.withdrawal || 0), 0);
   const expectedClose = Number(openingBalance || 0) + net;
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (!content) return;
+      const parsed = parseStatementCsv(content);
+      if (parsed.length) {
+        setLines(parsed);
+        const dates = parsed
+          .map((l) => l.transactionDate)
+          .filter(Boolean)
+          .sort();
+        if (dates.length) {
+          setPeriodStart(dates[0]);
+          setPeriodEnd(dates[dates.length - 1]);
+        }
+        toast.success(`Parsed ${parsed.length} statement transaction lines from ${file.name}`);
+      } else {
+        toast.error("Could not parse statement lines. Please ensure CSV has columns: Date, Ref, Description, Deposit, Withdrawal.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -368,9 +800,19 @@ function StatementEditor({ open, accounts, currency, onClose, onSaved }: { open:
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        bankAccountId, statementNumber: statementNumber || null, periodStart, periodEnd,
-        openingBalance, closingBalance: closingBalance || String(expectedClose.toFixed(4)),
-        lines: lines.map((line) => ({ transactionDate: line.transactionDate || periodStart, reference: line.reference || null, description: line.description, deposit: line.deposit || "0", withdrawal: line.withdrawal || "0" })),
+        bankAccountId,
+        statementNumber: statementNumber || null,
+        periodStart,
+        periodEnd,
+        openingBalance,
+        closingBalance: closingBalance || String(expectedClose.toFixed(4)),
+        lines: lines.map((line) => ({
+          transactionDate: line.transactionDate || periodStart,
+          reference: line.reference || null,
+          description: line.description,
+          deposit: line.deposit || "0",
+          withdrawal: line.withdrawal || "0",
+        })),
       }),
     });
     const body = await response.json().catch(() => null);
@@ -381,39 +823,230 @@ function StatementEditor({ open, accounts, currency, onClose, onSaved }: { open:
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Import bank statement" description="Statement lines are accounting evidence only; they never create journals or stock effects." size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Import bank statement (Evidence Only)"
+      description="Statement lines serve as external evidence to match against posted General Ledger transactions. Statements never create or alter journals."
+      size="xl"
+    >
       <form onSubmit={save} className="space-y-4 p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="text-xs font-semibold">Bank account<select className={`${field} mt-1.5`} value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)} required>{accounts.filter((account) => account.isActive).map((account) => <option key={account.id} value={account.id}>{account.code} · {account.bankName}</option>)}</select></label>
-          <label className="text-xs font-semibold">Statement number<input className={`${field} mt-1.5`} value={statementNumber} onChange={(event) => setStatementNumber(event.target.value)} maxLength={80} /></label>
-          <label className="text-xs font-semibold">Currency<span className={`${field} mt-1.5 flex items-center bg-slate-50 text-slate-500`}>{accounts.find((account) => account.id === bankAccountId)?.currencyCode || currency}</span></label>
-          <label className="text-xs font-semibold">Period start<input className={`${field} mt-1.5`} type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} required /></label>
-          <label className="text-xs font-semibold">Period end<input className={`${field} mt-1.5`} type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} required /></label>
-          <label className="text-xs font-semibold">Opening balance<input className={`${field} mt-1.5 text-right`} inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} required /></label>
+          <label className="text-xs font-semibold">
+            Bank account
+            <select
+              className={`${field} mt-1.5`}
+              value={bankAccountId}
+              onChange={(event) => setBankAccountId(event.target.value)}
+              required
+            >
+              {accounts
+                .filter((account) => account.isActive)
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.code} · {account.bankName}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="text-xs font-semibold">
+            Statement number
+            <input
+              className={`${field} mt-1.5`}
+              value={statementNumber}
+              onChange={(event) => setStatementNumber(event.target.value)}
+              maxLength={80}
+              placeholder="e.g. STMT-2026-NOV"
+            />
+          </label>
+          <label className="text-xs font-semibold">
+            Currency
+            <span className={`${field} mt-1.5 flex items-center bg-slate-50 text-slate-500`}>
+              {accounts.find((account) => account.id === bankAccountId)?.currencyCode || currency}
+            </span>
+          </label>
+          <label className="text-xs font-semibold">
+            Period start
+            <input
+              className={`${field} mt-1.5`}
+              type="date"
+              value={periodStart}
+              onChange={(event) => setPeriodStart(event.target.value)}
+              required
+            />
+          </label>
+          <label className="text-xs font-semibold">
+            Period end
+            <input
+              className={`${field} mt-1.5`}
+              type="date"
+              value={periodEnd}
+              onChange={(event) => setPeriodEnd(event.target.value)}
+              required
+            />
+          </label>
+          <label className="text-xs font-semibold">
+            Opening balance ({currency})
+            <input
+              className={`${field} mt-1.5 text-right font-mono font-bold`}
+              inputMode="decimal"
+              value={openingBalance}
+              onChange={(event) => setOpeningBalance(event.target.value)}
+              required
+            />
+          </label>
         </div>
+
         <div className="rounded-xl border border-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-            <span className="text-xs font-bold text-slate-700">Statement lines <span className="ml-1 text-[10px] font-medium text-slate-400">{lines.length} line{lines.length === 1 ? "" : "s"} · net {net.toFixed(2)}</span></span>
-            <Button type="button" size="sm" variant="outline" onClick={() => setLines((current) => [...current, { transactionDate: periodEnd, reference: "", description: "", deposit: "", withdrawal: "" }])}><Plus className="h-3.5 w-3.5" />Add line</Button>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 px-3 py-2.5">
+            <span className="text-xs font-bold text-slate-700">
+              Statement Lines{" "}
+              <span className="ml-1 text-[11px] font-medium text-slate-500">
+                ({lines.length} lines · Net Movement: {formatMoney(String(net), currency)})
+              </span>
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-50">
+                <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
+                Upload CSV / TSV File
+                <input type="file" accept=".csv,.txt,.tsv" onChange={handleFileUpload} className="hidden" />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setLines((current) => [
+                    ...current,
+                    { transactionDate: periodEnd, reference: "", description: "", deposit: "", withdrawal: "" },
+                  ])
+                }
+              >
+                <Plus className="h-3.5 w-3.5" /> Add line
+              </Button>
+            </div>
           </div>
           <div className="max-h-64 space-y-2 overflow-y-auto p-3">
-            {!lines.length ? <p className="py-6 text-center text-[11px] text-slate-400">No lines yet. Enter or paste the statement rows.</p> : lines.map((line, index) => (
-              <div key={index} className="grid gap-2 lg:grid-cols-[130px_120px_1fr_110px_110px_32px]">
-                <input className={field} type="date" value={line.transactionDate} onChange={(event) => setLines((current) => current.map((item, position) => position === index ? { ...item, transactionDate: event.target.value } : item))} />
-                <input className={field} placeholder="Reference" value={line.reference} onChange={(event) => setLines((current) => current.map((item, position) => position === index ? { ...item, reference: event.target.value } : item))} />
-                <input className={field} placeholder="Description" value={line.description} onChange={(event) => setLines((current) => current.map((item, position) => position === index ? { ...item, description: event.target.value } : item))} required minLength={2} />
-                <input className={field} placeholder="Deposit" inputMode="decimal" value={line.deposit} onChange={(event) => setLines((current) => current.map((item, position) => position === index ? { ...item, deposit: event.target.value, withdrawal: event.target.value ? "" : item.withdrawal } : item))} />
-                <input className={field} placeholder="Withdrawal" inputMode="decimal" value={line.withdrawal} onChange={(event) => setLines((current) => current.map((item, position) => position === index ? { ...item, withdrawal: event.target.value, deposit: event.target.value ? "" : item.deposit } : item))} />
-                <Button type="button" variant="ghost" size="icon" onClick={() => setLines((current) => current.filter((_, position) => position !== index))}><XCircle className="h-4 w-4 text-rose-500" /></Button>
+            {!lines.length ? (
+              <div className="py-8 text-center">
+                <FileSpreadsheet className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-2 text-xs font-medium text-slate-500">No statement lines loaded</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  Upload a CSV statement (Date, Ref, Description, Deposit, Withdrawal) or click &quot;Add line&quot; to enter manually.
+                </p>
               </div>
-            ))}
+            ) : (
+              lines.map((line, index) => (
+                <div key={index} className="grid gap-2 lg:grid-cols-[130px_120px_1fr_110px_110px_32px]">
+                  <input
+                    className={field}
+                    type="date"
+                    value={line.transactionDate}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((item, position) =>
+                          position === index ? { ...item, transactionDate: event.target.value } : item
+                        )
+                      )
+                    }
+                  />
+                  <input
+                    className={field}
+                    placeholder="Reference"
+                    value={line.reference}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((item, position) =>
+                          position === index ? { ...item, reference: event.target.value } : item
+                        )
+                      )
+                    }
+                  />
+                  <input
+                    className={field}
+                    placeholder="Description"
+                    value={line.description}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((item, position) =>
+                          position === index ? { ...item, description: event.target.value } : item
+                        )
+                      )
+                    }
+                    required
+                    minLength={2}
+                  />
+                  <input
+                    className={field}
+                    placeholder="Deposit"
+                    inputMode="decimal"
+                    value={line.deposit}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((item, position) =>
+                          position === index
+                            ? { ...item, deposit: event.target.value, withdrawal: event.target.value ? "" : item.withdrawal }
+                            : item
+                        )
+                      )
+                    }
+                  />
+                  <input
+                    className={field}
+                    placeholder="Withdrawal"
+                    inputMode="decimal"
+                    value={line.withdrawal}
+                    onChange={(event) =>
+                      setLines((current) =>
+                        current.map((item, position) =>
+                          position === index
+                            ? { ...item, withdrawal: event.target.value, deposit: event.target.value ? "" : item.deposit }
+                            : item
+                        )
+                      )
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setLines((current) => current.filter((_, position) => position !== index))}
+                  >
+                    <XCircle className="h-4 w-4 text-rose-500" />
+                  </Button>
+                </div>
+              ))
+            )}
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs font-semibold">Closing balance<input className={`${field} mt-1.5 text-right`} inputMode="decimal" value={closingBalance} onChange={(event) => setClosingBalance(event.target.value)} placeholder={expectedClose.toFixed(4)} required /><span className="mt-1 block text-[10px] text-slate-400">Opening plus lines equals {expectedClose.toFixed(2)}.</span></label>
-          <div className="rounded-lg border border-slate-200 p-3 text-[11px] text-slate-500">Every line must fall inside the statement period. Overlapping statements for the same account are rejected, and a statement cannot be deleted once a reconciliation exists.</div>
+          <label className="text-xs font-semibold">
+            Closing balance ({currency})
+            <input
+              className={`${field} mt-1.5 text-right font-mono font-bold text-slate-900`}
+              inputMode="decimal"
+              value={closingBalance}
+              onChange={(event) => setClosingBalance(event.target.value)}
+              placeholder={expectedClose.toFixed(2)}
+              required
+            />
+            <span className="mt-1 block text-[10px] text-slate-500">
+              Opening balance ({openingBalance}) + Net movement ({net.toFixed(2)}) = {expectedClose.toFixed(2)}.
+            </span>
+          </label>
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-600 leading-relaxed">
+            <b>Audit Invariant:</b> Bank statements are evidence records used for matching and reconciliation only.
+            Importing a statement will never modify GL account balances or generate draft/posted journal entries.
+          </div>
         </div>
-        <div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="ghost" onClick={onClose}>Close</Button><Button type="submit" loading={saving} disabled={!accounts.length}>Import statement</Button></div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          <Button type="submit" loading={saving} disabled={!accounts.length} className="bg-blue-600 hover:bg-blue-700">
+            Import Statement
+          </Button>
+        </div>
       </form>
     </Modal>
   );

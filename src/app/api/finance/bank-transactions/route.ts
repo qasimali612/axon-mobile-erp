@@ -19,7 +19,19 @@ export async function GET(request: Request) {
         ...(branches ? { bankAccount: { branchId: { in: branches } } } : {}),
         journalEntry: { status: { in: ["POSTED", "REVERSED"] } },
       },
-      include: { bankAccount: { select: { code: true, bankName: true, currencyCode: true } }, journalEntry: { select: { id: true, voucherNumber: true } } },
+      include: {
+        bankAccount: { select: { code: true, bankName: true, currencyCode: true } },
+        journalEntry: {
+          select: {
+            id: true,
+            voucherNumber: true,
+            sourceModule: true,
+            status: true,
+            postingDate: true,
+            referenceDocument: true,
+          },
+        },
+      },
       orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
       take: 200,
     });

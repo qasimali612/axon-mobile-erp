@@ -79,15 +79,33 @@ export async function GET(request: Request) {
           },
         },
         orderBy: [{ postingDate: "desc" }, { createdAt: "desc" }],
-        take: 10,
+        take: 100,
       }),
     ]);
+
+    const cashAccountIds = cashAccounts.map((c) => c.id);
+    const cashLines = cashAccountIds.length
+      ? await prisma.journalEntryLine.groupBy({
+          by: ["accountId"],
+          where: {
+            accountId: { in: cashAccountIds },
+            entry: { companyId, status: { in: ["POSTED", "REVERSED"] } },
+          },
+          _sum: { debit: true, credit: true },
+        })
+      : [];
+
+    const cashAccountsWithBalances = cashAccounts.map((c) => {
+      const agg = cashLines.find((l: { accountId: string }) => l.accountId === c.id);
+      const balance = Number(agg?._sum?.debit || 0) - Number(agg?._sum?.credit || 0);
+      return { ...c, balance };
+    });
 
     return NextResponse.json(
       jsonSafe({
         data: {
           bankAccounts,
-          cashAccounts,
+          cashAccounts: cashAccountsWithBalances,
           branches,
           recentTransfers,
         },
