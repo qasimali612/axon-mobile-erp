@@ -87,6 +87,7 @@ export function PartyManager({
   const [address, setAddress] = useState("");
   const [taxNumber, setTaxNumber] = useState("");
   const [creditLimit, setCreditLimit] = useState("0");
+  const [openingBalance, setOpeningBalance] = useState("0");
   const [terms, setTerms] = useState("0");
 
   const can = (item: Tab) => permissions.includes(item === "customers" ? "customer.manage" : "supplier.manage");
@@ -188,6 +189,7 @@ export function PartyManager({
     setAddress("");
     setTaxNumber("");
     setCreditLimit("0");
+    setOpeningBalance("0");
     setTerms("0");
     setOpen(true);
   }
@@ -206,6 +208,7 @@ export function PartyManager({
     setAddress(row.address || "");
     setTaxNumber(row.taxNumber || "");
     setCreditLimit(row.creditLimit ? String(row.creditLimit) : "0");
+    setOpeningBalance(row.openingBalance ? String(row.openingBalance) : "0");
     setTerms(String(row.paymentTermsDays || 0));
     setOpen(true);
   }
@@ -231,6 +234,7 @@ export function PartyManager({
             address: address.trim() || null,
             taxNumber: taxNumber.trim() || null,
             creditLimit: creditLimit.trim() || "0",
+            openingBalance: openingBalance.trim() || "0",
             paymentTermsDays: Number(terms) || 0,
           }
         : {
@@ -243,6 +247,7 @@ export function PartyManager({
             address: address.trim() || null,
             taxNumber: taxNumber.trim() || null,
             creditLimit: creditLimit.trim() || "0",
+            openingBalance: openingBalance.trim() || "0",
             paymentTermsDays: Number(terms) || 0,
           };
 
@@ -686,6 +691,23 @@ export function PartyManager({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="label">Opening Balance ({currency})</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{currency}</span>
+                  <input
+                    inputMode="decimal"
+                    className="input pl-11 font-mono"
+                    placeholder="0.00"
+                    value={openingBalance}
+                    onChange={(e) => setOpeningBalance(e.target.value)}
+                  />
+                </div>
+                <span className="mt-1 block text-[10px] text-slate-400">
+                  Initial {tab === "suppliers" ? "payable" : "receivable"} balance at onboarding.
+                </span>
               </div>
 
               <div>

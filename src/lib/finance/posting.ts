@@ -199,7 +199,7 @@ export async function createJournalDraft(actor: ActorContext, input: JournalDraf
       const [accounts, bankAccounts] = await Promise.all([
         tx.account.findMany({
           where: { id: { in: uniqueAccountIds }, companyId: actor.companyId, isActive: true },
-          select: { id: true, allowManualJournal: true, branchId: true, code: true },
+          select: { id: true, allowManualJournal: true, branchId: true, code: true, accountType: true },
         }),
         tx.bankAccount.findMany({
           where: { glAccountId: { in: uniqueAccountIds }, companyId: actor.companyId, isActive: true },
@@ -212,10 +212,25 @@ export async function createJournalDraft(actor: ActorContext, input: JournalDraf
       const accountMap = new Map(accounts.map((account) => [account.id, account]));
       const glToBankMap = new Map(bankAccounts.map((b) => [b.glAccountId, b.id]));
       const sourceModule = input.sourceModule || "MANUAL";
-      if (sourceModule === "MANUAL") {
-        const protectedAccount = accounts.find((account) => !account.allowManualJournal);
+      if (sourceModule === "MANUAL" && input.voucherType !== JournalType.OPENING) {
+        const protectedAccount = accounts.find((account) => {
+          if (account.allowManualJournal) return false;
+          if (account.accountType === "ACCOUNTS_PAYABLE") {
+            const linesForAccount = input.lines.filter((l) => l.accountId === account.id);
+            if (linesForAccount.length > 0 && linesForAccount.every((l) => Boolean(l.supplierId))) {
+              return false;
+            }
+          }
+          if (account.accountType === "ACCOUNTS_RECEIVABLE") {
+            const linesForAccount = input.lines.filter((l) => l.accountId === account.id);
+            if (linesForAccount.length > 0 && linesForAccount.every((l) => Boolean(l.customerId))) {
+              return false;
+            }
+          }
+          return true;
+        });
         if (protectedAccount) {
-          throw new ApiError(422, "CONTROL_ACCOUNT", `Account ${protectedAccount.code} accepts postings only from its source module.`);
+          throw new ApiError(422, "CONTROL_ACCOUNT", `Account ${protectedAccount.code} accepts postings only from its source module or with party attribution.`);
         }
       }
 

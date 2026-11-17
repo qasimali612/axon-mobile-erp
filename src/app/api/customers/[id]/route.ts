@@ -94,6 +94,7 @@ export async function PUT(request: Request, { params }: Params) {
           address: body.address || null,
           taxNumber: body.taxNumber || null,
           creditLimit: body.creditLimit,
+          openingBalance: body.openingBalance || "0",
           paymentTermsDays: body.paymentTermsDays,
           priceListId: body.priceListId || null,
           status: body.status || existing.status,

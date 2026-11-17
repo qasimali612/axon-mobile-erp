@@ -19,7 +19,7 @@ export default async function JournalRegisterPage({ searchParams }: { searchPara
   const allowedBranchIds = permittedBranchIds(context, "GL_VIEW");
   const companyId = context.company.id;
   const branchWhere = allowedBranchIds ? { id: { in: allowedBranchIds } } : {};
-  const [journals, accounts, branches, costCenters, departments] = await Promise.all([
+  const [journals, accounts, branches, costCenters, departments, suppliers, customers] = await Promise.all([
     prisma.journalEntry.findMany({
       where: {
         companyId,
@@ -57,6 +57,7 @@ export default async function JournalRegisterPage({ searchParams }: { searchPara
         code: true,
         name: true,
         accountClass: true,
+        accountType: true,
         bankAccounts: { where: { isActive: true }, select: { id: true }, take: 1 },
       },
       orderBy: { code: "asc" },
@@ -64,6 +65,16 @@ export default async function JournalRegisterPage({ searchParams }: { searchPara
     prisma.branch.findMany({ where: { companyId, isActive: true, ...branchWhere }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.costCenter.findMany({ where: { companyId, isActive: true, ...(allowedBranchIds ? { OR: [{ branchId: null }, { branchId: { in: allowedBranchIds } }] } : {}) }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
     prisma.department.findMany({ where: { companyId, isActive: true, ...(allowedBranchIds ? { OR: [{ branchId: null }, { branchId: { in: allowedBranchIds } }] } : {}) }, select: { id: true, code: true, name: true }, orderBy: { code: "asc" } }),
+    prisma.supplier.findMany({
+      where: { companyId, status: "ACTIVE" },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.customer.findMany({
+      where: { companyId, status: "ACTIVE" },
+      select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -75,11 +86,14 @@ export default async function JournalRegisterPage({ searchParams }: { searchPara
           code: account.code,
           name: account.name,
           accountClass: account.accountClass,
+          accountType: account.accountType,
           bankAccountId: account.bankAccounts[0]?.id || null,
         }))}
         branches={branches}
         costCenters={costCenters}
         departments={departments}
+        suppliers={suppliers}
+        customers={customers}
         currency={context.company.currencyCode}
         canCreate={context.permissions.includes("JOURNAL_CREATE")}
         initialSearch={search}

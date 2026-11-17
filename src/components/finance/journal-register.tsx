@@ -41,9 +41,18 @@ type Journal = {
   _count: { lines: number };
 };
 
-type Account = { id: string; code: string; name: string; accountClass: string; bankAccountId: string | null };
+type Account = { id: string; code: string; name: string; accountClass: string; accountType?: string; bankAccountId: string | null };
 type Option = { id: string; code: string; name: string };
-type DraftLine = { accountId: string; description: string; debit: string; credit: string };
+type DraftLine = {
+  accountId: string;
+  description: string;
+  debit: string;
+  credit: string;
+  supplierId?: string;
+  customerId?: string;
+  invoiceNumber?: string;
+  dueDate?: string;
+};
 
 function moneyUnits(value: string) {
   const match = value.trim().match(/^(\d{0,15})(?:\.(\d{0,4}))?$/);
@@ -78,6 +87,8 @@ export function JournalRegister({
   branches,
   costCenters,
   departments,
+  suppliers = [],
+  customers = [],
   currency,
   canCreate,
   initialSearch,
@@ -88,6 +99,8 @@ export function JournalRegister({
   branches: Option[];
   costCenters: Option[];
   departments: Option[];
+  suppliers?: Option[];
+  customers?: Option[];
   currency: string;
   canCreate: boolean;
   initialSearch: string;
@@ -206,6 +219,16 @@ export function JournalRegister({
     setVoucherType(preset.type);
     setCashFlowActivity(preset.cashFlow);
     setNarration(preset.narration);
+    if (preset.type === "OPENING") {
+      const equityAcc = accounts.find((a) => a.accountClass === "EQUITY" || a.code === "3000" || a.code === "3100") || accounts[1];
+      const payableAcc = accounts.find((a) => a.accountType === "ACCOUNTS_PAYABLE" || a.code === "2000") || accounts[0];
+      setLines([
+        { accountId: equityAcc?.id || accounts[0]?.id || "", description: "Opening balance equity offset", debit: "", credit: "", supplierId: "", customerId: "", invoiceNumber: "", dueDate: "" },
+        { accountId: payableAcc?.id || accounts[1]?.id || "", description: "Supplier Opening Payable Balance", debit: "", credit: "", supplierId: suppliers[0]?.id || "", customerId: "", invoiceNumber: "OB-001", dueDate: "" },
+      ]);
+      toast.success(`Applied preset: ${preset.label} (Select your supplier & enter amount)`);
+      return;
+    }
     setLines((curr) =>
       curr.map((l) => ({
         ...l,
@@ -225,8 +248,8 @@ export function JournalRegister({
     setCostCenterId("");
     setDepartmentId("");
     setLines([
-      { accountId: accounts[0]?.id || "", description: "", debit: "", credit: "" },
-      { accountId: accounts[1]?.id || "", description: "", debit: "", credit: "" },
+      { accountId: accounts[0]?.id || "", description: "", debit: "", credit: "", supplierId: "", customerId: "", invoiceNumber: "", dueDate: "" },
+      { accountId: accounts[1]?.id || "", description: "", debit: "", credit: "", supplierId: "", customerId: "", invoiceNumber: "", dueDate: "" },
     ]);
     setCreateOpen(true);
   }
@@ -266,11 +289,15 @@ export function JournalRegister({
           departmentId: departmentId || null,
           idempotencyKey: crypto.randomUUID(),
           lines: lines.map((line) => ({
-            ...line,
+            accountId: line.accountId,
             description: line.description.trim() || narration,
             debit: line.debit || "0",
             credit: line.credit || "0",
             bankAccountId: accounts.find((account) => account.id === line.accountId)?.bankAccountId || null,
+            supplierId: line.supplierId || null,
+            customerId: line.customerId || null,
+            invoiceNumber: line.invoiceNumber?.trim() || null,
+            dueDate: line.dueDate || null,
           })),
         }),
       });
@@ -763,6 +790,80 @@ export function JournalRegister({
                                 Class: {selectedAcc.accountClass}
                               </div>
                             ) : null}
+
+                            {/* Party Subledger selector for Accounts Payable */}
+                            {(selectedAcc?.accountType === "ACCOUNTS_PAYABLE" || selectedAcc?.code === "2000") && (
+                              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 p-2 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-bold text-amber-900">
+                                  <span>🏢 Supplier / Vendor (Party-Wise Subledger)</span>
+                                </div>
+                                <select
+                                  value={line.supplierId || ""}
+                                  onChange={(e) => updateLine(index, { supplierId: e.target.value })}
+                                  className="h-8 w-full rounded border border-amber-300 bg-white px-2 text-xs font-semibold text-slate-800"
+                                >
+                                  <option value="">— Select Supplier for Party Subledger —</option>
+                                  {suppliers.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.code} · {s.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex gap-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder="Bill / Invoice # (e.g. OB-001)"
+                                    value={line.invoiceNumber || ""}
+                                    onChange={(e) => updateLine(index, { invoiceNumber: e.target.value })}
+                                    className="h-7 w-1/2 rounded border border-amber-200 bg-white px-2 text-[11px] placeholder:text-slate-400"
+                                  />
+                                  <input
+                                    type="date"
+                                    title="Due Date"
+                                    value={line.dueDate || ""}
+                                    onChange={(e) => updateLine(index, { dueDate: e.target.value })}
+                                    className="h-7 w-1/2 rounded border border-amber-200 bg-white px-2 text-[11px]"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Party Subledger selector for Accounts Receivable */}
+                            {(selectedAcc?.accountType === "ACCOUNTS_RECEIVABLE" || selectedAcc?.code === "1100") && (
+                              <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-2 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-bold text-blue-900">
+                                  <span>👤 Customer (Party-Wise Subledger)</span>
+                                </div>
+                                <select
+                                  value={line.customerId || ""}
+                                  onChange={(e) => updateLine(index, { customerId: e.target.value })}
+                                  className="h-8 w-full rounded border border-blue-300 bg-white px-2 text-xs font-semibold text-slate-800"
+                                >
+                                  <option value="">— Select Customer for Party Subledger —</option>
+                                  {customers.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.code} · {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex gap-1.5">
+                                  <input
+                                    type="text"
+                                    placeholder="Invoice Ref # (e.g. OB-INV-001)"
+                                    value={line.invoiceNumber || ""}
+                                    onChange={(e) => updateLine(index, { invoiceNumber: e.target.value })}
+                                    className="h-7 w-1/2 rounded border border-blue-200 bg-white px-2 text-[11px] placeholder:text-slate-400"
+                                  />
+                                  <input
+                                    type="date"
+                                    title="Due Date"
+                                    value={line.dueDate || ""}
+                                    onChange={(e) => updateLine(index, { dueDate: e.target.value })}
+                                    className="h-7 w-1/2 rounded border border-blue-200 bg-white px-2 text-[11px]"
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </td>
 
                           <td className="px-3 py-2">
@@ -833,7 +934,7 @@ export function JournalRegister({
                           onClick={() =>
                             setLines((current) => [
                               ...current,
-                              { accountId: accounts[0]?.id || "", description: narration, debit: "", credit: "" },
+                              { accountId: accounts[0]?.id || "", description: narration, debit: "", credit: "", supplierId: "", customerId: "", invoiceNumber: "", dueDate: "" },
                             ])
                           }
                           className="flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800"
