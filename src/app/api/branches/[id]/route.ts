@@ -9,6 +9,80 @@ import { branchSchema, idSchema } from "@/lib/validation";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+export async function GET(request: Request, { params }: RouteContext) {
+  try {
+    const context = await requirePermission("organization.branch.view");
+    const id = idSchema.parse((await params).id);
+    const branch = await prisma.branch.findFirst({
+      where: { id, companyId: context.company.id, archivedAt: null },
+      include: {
+        warehouses: { where: { archivedAt: null }, orderBy: { code: "asc" } },
+        scopedUserRoles: {
+          include: {
+            membership: { include: { user: { select: { id: true, fullName: true, email: true, phone: true, status: true } } } },
+            role: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!branch) throw new ApiError(404, "NOT_FOUND", "Branch not found.");
+
+    // Compute branch-wise metrics
+    const [stockBalances, salesInvoices, purchaseReceipts, expenseLines, cashAccounts, bankAccounts] = await Promise.all([
+      prisma.stockBalance.aggregate({
+        where: { branchId: id, companyId: context.company.id, quantity: { gt: 0 } },
+        _sum: { quantity: true, inventoryValue: true },
+        _count: { id: true },
+      }),
+      prisma.salesInvoice.aggregate({
+        where: { branchId: id, companyId: context.company.id, status: "POSTED" },
+        _sum: { grandTotal: true },
+        _count: { id: true },
+      }),
+      prisma.purchaseReceipt.aggregate({
+        where: { branchId: id, companyId: context.company.id, status: "POSTED" },
+        _sum: { grandTotal: true },
+        _count: { id: true },
+      }),
+      prisma.journalEntryLine.aggregate({
+        where: {
+          entry: { branchId: id, companyId: context.company.id, status: "POSTED" },
+          account: { accountType: "OPERATING_EXPENSE" },
+        },
+        _sum: { baseDebit: true },
+      }),
+      prisma.account.findMany({
+        where: { branchId: id, companyId: context.company.id, accountType: "CASH", isActive: true },
+        select: { id: true, code: true, name: true },
+      }),
+      prisma.bankAccount.findMany({
+        where: { branchId: id, companyId: context.company.id, isActive: true },
+        select: { id: true, code: true, bankName: true, accountTitle: true },
+      }),
+    ]);
+
+    return NextResponse.json({
+      data: {
+        branch,
+        metrics: {
+          inventoryQuantity: Number(stockBalances._sum.quantity || 0),
+          inventoryValue: Number(stockBalances._sum.inventoryValue || 0),
+          stockItemsCount: stockBalances._count.id,
+          salesTotal: Number(salesInvoices._sum.grandTotal || 0),
+          salesCount: salesInvoices._count.id,
+          purchasesTotal: Number(purchaseReceipts._sum.grandTotal || 0),
+          purchasesCount: purchaseReceipts._count.id,
+          expensesTotal: Number(expenseLines._sum.baseDebit || 0),
+          cashAccountsCount: cashAccounts.length,
+          bankAccountsCount: bankAccounts.length,
+        },
+      },
+    });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
     assertSameOrigin(request);

@@ -80,6 +80,37 @@
 
 ---
 
+### 2026-11-17 — Session 5: Priority 09 (Branches, Warehouses, Users & Access Management) Completion
+- **Action 1 (Branch & Warehouse Operational Status):**
+  - Activated and audited both company branches: `HZR` (Hazro Central) and `ISB` (Islamabad).
+  - Ensured all 4 operational warehouses are active with strict operational flags:
+    - `HZR-MAIN` (Main Warehouse, `HZR`, dispatch=true, receiving=true, active=true)
+    - `ISB-RETAIL` (Islamabad Main Shop, `ISB`, dispatch=true, receiving=true, active=true)
+    - `ISB-QUARANTINE` (Islamabad Quarantine, `ISB`, dispatch=false, receiving=true, active=true)
+    - `HZR-QUARANTINE` (Hazro Quarantine, `HZR`, dispatch=false, receiving=true, active=true)
+  - Enforced warehouse segregation: quarantine locations prevent normal sales dispatch.
+- **Action 2 (Role-Based Access Control Seeded):**
+  - Seeded 10 standard system roles with comprehensive permission sets using `RolePermission.createMany`: `SUPER_ADMIN` (160 permissions), `ADMINISTRATOR` (159 permissions), `BRANCH_MANAGER` (73 permissions), `INVENTORY_MANAGER` (34 permissions), `STOREKEEPER` (17 permissions), `SALESPERSON` (32 permissions), `PURCHASE_OFFICER` (38 permissions), `ACCOUNTANT` (65 permissions), `CASHIER` (24 permissions), `AUDITOR` (38 permissions).
+  - Enforced principle of least privilege: Storekeepers denied GL posting and period closing.
+- **Action 3 (Branch & Warehouse Detail APIs):**
+  - Added `GET /api/branches/[id]` providing branch overview, linked warehouses, assigned users, inventory counts & valuation, sales totals, purchase totals, operating expenses, and cash/bank accounts.
+  - Added `GET /api/warehouses/[id]` providing warehouse profile, parent branch, manager, locations, balance quantities, and physical handset units.
+- **Action 4 (User Security & Super Admin Protection Guard):**
+  - Updated `GET /api/users` to explicitly omit `passwordHash` across all user listings.
+  - Added `LAST_ADMIN_PROTECTED` safeguard in `PATCH /api/users/[id]` preventing deactivation or suspension of the last active Super Administrator.
+- **Action 5 (Inter-Warehouse Stock Transfer Robustness):**
+  - Added explicit `{ isolationLevel: Serializable, maxWait: 10_000, timeout: 30_000 }` transaction limits to `submitStockTransfer` and `approveStockTransfer` to prevent timeout on high-latency cloud connections.
+  - Enforced serial handset validation: dual-SIM mobile phones (2 IMEI records) transfer as exactly 1 physical stock unit; duplicate IMEI rejected.
+  - Enforced bulk stock validation: accessories transfers reject quantities exceeding available stock.
+  - Invariant confirmed: internal transfers have zero revenue/expense impact; total inventory valuation across company is preserved at Rs. 896,260.00, reconciling 100% with GL Account 1200 with Rs. 0.00 discrepancy.
+- **Action 6 (Typecheck & Acceptance Testing):**
+  - Executed `npm run typecheck` across all 4 partitions (`foundation`, `finance`, `ops`, `scripts`) with 0 errors.
+  - Executed automated acceptance test suite `scripts/test_priority_09.ts`: **52 / 52 Tests Passed (100.0%)**.
+- **Action 7 (Governance Updates):**
+  - Updated `IMPLEMENTATION_STATUS.md`, `MODULE_COMPLETION_MATRIX.md`, `FINAL_TEST_RESULTS.md`, `IMPLEMENTATION_LOG.md`.
+
+---
+
 ### Previous Sessions (Historical Log)
 - **Supplier Opening Balance Sync:** Added `syncPartyOpeningBalance` engine creating double-entry `OPENING` journal entries linked to party subledgers (Commit `753c27b`).
 - **POS & Sales Direct Posting:** Implemented direct-posting mode on sales invoices and POS cashier shifts without requiring maker-checker approval queues (Migration `20261116160000`).

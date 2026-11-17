@@ -37,6 +37,18 @@ export async function PUT(request: Request, { params }: RouteContext) {
     if (membership.isOwner && input.status === "SUSPENDED") {
       throw new ApiError(409, "OWNER_PROTECTED", "Transfer company ownership before suspending the owner.");
     }
+    const hasAdminRole = membership.userRoles.some((r) => r.role.code === "SUPER_ADMIN" || r.role.code === "OWNER");
+    if (hasAdminRole && input.status === "SUSPENDED") {
+      const activeAdminCount = await prisma.userRole.count({
+        where: {
+          membership: { companyId: context.company.id, status: MembershipStatus.ACTIVE },
+          role: { code: { in: ["SUPER_ADMIN", "OWNER"] } },
+        },
+      });
+      if (activeAdminCount <= 1) {
+        throw new ApiError(409, "LAST_ADMIN_PROTECTED", "Cannot suspend the last active Super Administrator account.");
+      }
+    }
 
     const [role, branch, warehouse] = await Promise.all([
       prisma.role.findFirst({ where: { id: input.roleId, companyId: context.company.id, isActive: true } }),

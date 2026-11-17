@@ -13,7 +13,19 @@ export async function GET() {
     const memberships = await prisma.companyMembership.findMany({
       where: { companyId: context.company.id, status: { not: MembershipStatus.ENDED } },
       include: {
-        user: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            phone: true,
+            status: true,
+            avatarUrl: true,
+            lastLoginAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         userRoles: {
           include: { role: true, branch: true, warehouse: true },
           orderBy: { createdAt: "asc" },

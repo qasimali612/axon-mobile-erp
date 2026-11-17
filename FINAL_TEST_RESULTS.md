@@ -162,4 +162,45 @@
   27. Branch context scoping and cross-branch prevention (`SOURCE_CONTEXT_MISMATCH`).
   28. Return and exchange report queries matching authoritative database records.
 - **Status:** **PASSED (100% Audit Verified)**
-- **Next Priority:** **Priority 09 — Branches, Warehouses & User Permissions**
+- **Next Priority:** **Priority 09 — Branches, Warehouses & User Permissions (Completed)**
+
+---
+
+## 9. Priority 09: Branches, Warehouses, Users & Access Management Verification
+
+- **Verification Date:** November 2026
+- **Test Suite Script:** `scripts/test_priority_09.ts` (run via `npx tsx`)
+- **Result:** **52 / 52 Tests Passed (100.0%)**
+- **Test Points Covered:**
+  1. Active multi-branch structure: `HZR` (Hazro Central) and `ISB` (Islamabad).
+  2. Four operational warehouses correctly mapped to parent branches:
+     - `HZR-MAIN` (Main Warehouse, `HZR`, allowDispatch=true, allowReceiving=true)
+     - `HZR-QUARANTINE` (Quarantine & Damaged, `HZR`, allowDispatch=false, allowReceiving=true)
+     - `ISB-RETAIL` (Islamabad Main Shop, `ISB`, allowDispatch=true, allowReceiving=true)
+     - `ISB-QUARANTINE` (Quarantine & Damaged, `ISB`, allowDispatch=false, allowReceiving=true)
+  3. Unique constraint enforcement on branch codes (duplicate `ISB` rejected).
+  4. Unique constraint enforcement on warehouse codes (duplicate `ISB-RETAIL` rejected).
+  5. Stock transfer draft creation (`ISB-ST-FY2026-27-000003`) between branches and warehouses.
+  6. Outbound serialized device dispatch (`TRANSFER_OUT`, quantity = -1).
+  7. Inbound serialized device receipt (`TRANSFER_IN`, quantity = +1) with location update.
+  8. Dual-SIM handset integrity: device with 2 IMEI identifiers transfers as strictly 1 physical unit (quantity = 1).
+  9. Duplicate IMEI payload rejection (`DUPLICATE_STOCK_UNIT`).
+  10. Inter-branch restoration stock transfer executed, verifying bi-directional movement.
+  11. Available stock availability guard (`INSUFFICIENT_AVAILABLE_STOCK`).
+  12. In-transit goods traceable via linked `movementGroupId`.
+  13. Direct dispatch and receiving completed atomically.
+  14. Duplicate posting immunity (re-posting returns existing posted document idempotently).
+  15. Balance accuracy after round-trip: `HZR-MAIN` = 0 units, `ISB-RETAIL` = 21 units.
+  16. Stock valuation reconciliation: GL Account 1200 balance of Rs. 896,260.00 matches `StockBalance` valuation with zero discrepancy (**Diff: Rs. 0.00**).
+  17. Zero financial impact from transfers: 0 income/expense journal entries generated.
+  18. Branch-restricted user provisioning: `hazro.manager@axonmobile.local` assigned to `HZR`.
+  19. Server-side cross-branch isolation enforced (Hazro manager blocked from ISB records).
+  20. Quarantine warehouse restrictions strictly enforced (dispatch blocked).
+  21. Role-Based Access Control: 10 standard roles configured with least privilege:
+      - `SUPER_ADMIN`, `ADMINISTRATOR`, `BRANCH_MANAGER`, `INVENTORY_MANAGER`, `STOREKEEPER`, `SALESPERSON`, `PURCHASE_OFFICER`, `ACCOUNTANT`, `CASHIER`, `AUDITOR`.
+  22. Financial posting guard: non-financial roles (`STOREKEEPER`) denied GL posting and period closing.
+  23. Password security: `passwordHash` omitted from user representations; hashes use bcrypt (12 rounds).
+  24. Last active Super Administrator account protection verified (`LAST_ADMIN_PROTECTED`).
+  25. Administrative audit trail verification: `AuditLog` captures user, branch, warehouse, and transfer actions.
+- **Status:** **PASSED (100% Audit Verified)**
+- **Next Priority:** **Priority 10 — Incentives, Rebates, Fixed Assets & Staff**

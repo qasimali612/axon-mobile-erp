@@ -9,6 +9,46 @@ import { idSchema, warehouseSchema } from "@/lib/validation";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+export async function GET(request: Request, { params }: RouteContext) {
+  try {
+    const context = await requirePermission("organization.warehouse.view");
+    const id = idSchema.parse((await params).id);
+    const warehouse = await prisma.warehouse.findFirst({
+      where: { id, companyId: context.company.id, archivedAt: null },
+      include: {
+        branch: { select: { id: true, code: true, name: true } },
+        manager: { select: { id: true, fullName: true, email: true } },
+        locations: { where: { isActive: true }, orderBy: { code: "asc" } },
+      },
+    });
+    if (!warehouse) throw new ApiError(404, "NOT_FOUND", "Warehouse not found.");
+
+    const stockSummary = await prisma.stockBalance.aggregate({
+      where: { warehouseId: id, companyId: context.company.id, quantity: { gt: 0 } },
+      _sum: { quantity: true, inventoryValue: true },
+      _count: { id: true },
+    });
+
+    const physicalUnitsCount = await prisma.physicalStockUnit.count({
+      where: { currentWarehouseId: id, companyId: context.company.id, status: "IN_STOCK" },
+    });
+
+    return NextResponse.json({
+      data: {
+        warehouse,
+        metrics: {
+          stockQuantity: Number(stockSummary._sum.quantity || 0),
+          stockValue: Number(stockSummary._sum.inventoryValue || 0),
+          stockItemsCount: stockSummary._count.id,
+          physicalUnitsInStock: physicalUnitsCount,
+        },
+      },
+    });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
 export async function PUT(request: Request, { params }: RouteContext) {
   try {
     assertSameOrigin(request);

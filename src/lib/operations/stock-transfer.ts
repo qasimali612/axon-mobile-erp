@@ -451,7 +451,7 @@ export async function submitStockTransfer(actor: TransferActor, id: string) {
       newValues: { status: updated.status },
     }, tx);
     return updated;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 export async function approveStockTransfer(actor: TransferActor, id: string) {
@@ -481,7 +481,7 @@ export async function approveStockTransfer(actor: TransferActor, id: string) {
       newValues: { status: updated.status },
     }, tx);
     return updated;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 type OriginalMovementMap = Map<string, { id: string; quantity: Prisma.Decimal; totalCost: Prisma.Decimal }>;
