@@ -1,6 +1,6 @@
 import "server-only";
 
-import { JournalStatus, PartyStatus, Prisma } from "@prisma/client";
+import { JournalStatus, JournalType, PartyStatus, Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 
@@ -77,7 +77,38 @@ async function ledgerBalances(kind: PartyLedgerKind, companyId: string, partyIds
         WHERE e."companyId"=${companyId}::uuid AND e."status" IN ('POSTED','REVERSED') AND e."postingDate"<=${asOf}
           AND a."accountType"='ACCOUNTS_PAYABLE' AND l."supplierId"::text IN (${ids}) ${branches}
         GROUP BY l."supplierId"`);
-  return new Map(rows.map((row) => [row.partyId, round(row.balance)]));
+
+  const balanceMap = new Map(rows.map((row) => [row.partyId, round(row.balance)]));
+
+  // Fallback: check parties whose openingBalance is set on profile but not yet posted in GL
+  const parties = kind === "customer"
+    ? await prisma.customer.findMany({ where: { id: { in: partyIds } }, select: { id: true, openingBalance: true } })
+    : await prisma.supplier.findMany({ where: { id: { in: partyIds } }, select: { id: true, openingBalance: true } });
+
+  const openingVoucherParties = kind === "customer"
+    ? await prisma.journalEntryLine.findMany({
+        where: { customerId: { in: partyIds }, entry: { voucherType: JournalType.OPENING, status: { in: [JournalStatus.POSTED, JournalStatus.REVERSED] } } },
+        select: { customerId: true },
+      })
+    : await prisma.journalEntryLine.findMany({
+        where: { supplierId: { in: partyIds }, entry: { voucherType: JournalType.OPENING, status: { in: [JournalStatus.POSTED, JournalStatus.REVERSED] } } },
+        select: { supplierId: true },
+      });
+
+  const coveredSet = new Set(
+    openingVoucherParties.map((p: { customerId?: string | null; supplierId?: string | null }) =>
+      (kind === "customer" ? p.customerId : p.supplierId)
+    )
+  );
+  for (const p of parties) {
+    const ob = new Prisma.Decimal((p as any).openingBalance || 0);
+    if (ob.gt(0) && !coveredSet.has(p.id)) {
+      const current = balanceMap.get(p.id) || zero();
+      balanceMap.set(p.id, round(current.plus(ob)));
+    }
+  }
+
+  return balanceMap;
 }
 
 async function openItemsByParty(kind: PartyLedgerKind, companyId: string, partyIds: string[], asOf: Date, branchIds: string[] | null): Promise<Map<string, OpenItem[]>> {
@@ -184,18 +215,18 @@ export async function getPartyStatement(input: { companyId: string; kind: PartyL
   if (input.from > input.to) throw new ApiError(422, "INVALID_DATE_RANGE", "Statement start date cannot be after the end date.");
   const scope = input.branchIds ? { OR: [{ branchId: null }, { branchId: { in: input.branchIds } }] } : {};
   const party = input.kind === "customer"
-    ? await prisma.customer.findFirst({ where: { id: input.partyId, companyId: input.companyId, ...scope }, select: { id: true, code: true, name: true, phone: true, email: true, address: true, status: true, creditLimit: true, paymentTermsDays: true } })
-    : await prisma.supplier.findFirst({ where: { id: input.partyId, companyId: input.companyId, ...scope }, select: { id: true, code: true, name: true, phone: true, email: true, address: true, status: true, creditLimit: true, paymentTermsDays: true } });
+    ? await prisma.customer.findFirst({ where: { id: input.partyId, companyId: input.companyId, ...scope }, select: { id: true, code: true, name: true, phone: true, email: true, address: true, status: true, creditLimit: true, paymentTermsDays: true, openingBalance: true } })
+    : await prisma.supplier.findFirst({ where: { id: input.partyId, companyId: input.companyId, ...scope }, select: { id: true, code: true, name: true, phone: true, email: true, address: true, status: true, creditLimit: true, paymentTermsDays: true, openingBalance: true } });
   if (!party) throw new ApiError(404, "PARTY_NOT_FOUND", `${input.kind === "customer" ? "Customer" : "Supplier"} was not found in the allowed scope.`);
   const branches = branchClause("l", input.branchIds);
   const controlType = input.kind === "customer" ? "ACCOUNTS_RECEIVABLE" : "ACCOUNTS_PAYABLE";
   const partyPredicate = input.kind === "customer" ? Prisma.sql`l."customerId"=${input.partyId}::uuid` : Prisma.sql`l."supplierId"=${input.partyId}::uuid`;
   const aggregates = await prisma.$queryRaw<Array<{ openingDebit: Prisma.Decimal; openingCredit: Prisma.Decimal; periodDebit: Prisma.Decimal; periodCredit: Prisma.Decimal }>>(Prisma.sql`
     SELECT
-      COALESCE(SUM(l."baseDebit") FILTER (WHERE e."postingDate"<${input.from}),0)::numeric(19,4) AS "openingDebit",
-      COALESCE(SUM(l."baseCredit") FILTER (WHERE e."postingDate"<${input.from}),0)::numeric(19,4) AS "openingCredit",
-      COALESCE(SUM(l."baseDebit") FILTER (WHERE e."postingDate">=${input.from} AND e."postingDate"<=${input.to}),0)::numeric(19,4) AS "periodDebit",
-      COALESCE(SUM(l."baseCredit") FILTER (WHERE e."postingDate">=${input.from} AND e."postingDate"<=${input.to}),0)::numeric(19,4) AS "periodCredit"
+      COALESCE(SUM(l."baseDebit") FILTER (WHERE e."postingDate"<${input.from} OR (e."postingDate"<=${input.to} AND e."voucherType"='OPENING')),0)::numeric(19,4) AS "openingDebit",
+      COALESCE(SUM(l."baseCredit") FILTER (WHERE e."postingDate"<${input.from} OR (e."postingDate"<=${input.to} AND e."voucherType"='OPENING')),0)::numeric(19,4) AS "openingCredit",
+      COALESCE(SUM(l."baseDebit") FILTER (WHERE e."postingDate">=${input.from} AND e."postingDate"<=${input.to} AND e."voucherType"<>'OPENING'),0)::numeric(19,4) AS "periodDebit",
+      COALESCE(SUM(l."baseCredit") FILTER (WHERE e."postingDate">=${input.from} AND e."postingDate"<=${input.to} AND e."voucherType"<>'OPENING'),0)::numeric(19,4) AS "periodCredit"
     FROM "JournalEntryLine" l JOIN "JournalEntry" e ON e."id"=l."entryId" JOIN "Account" a ON a."id"=l."accountId"
     WHERE e."companyId"=${input.companyId}::uuid AND e."status" IN ('POSTED','REVERSED') AND e."postingDate"<=${input.to}
       AND a."accountType"=${controlType} AND ${partyPredicate} ${branches}`);
@@ -206,12 +237,18 @@ export async function getPartyStatement(input: { companyId: string; kind: PartyL
       l."baseDebit" AS debit, l."baseCredit" AS credit
     FROM "JournalEntryLine" l JOIN "JournalEntry" e ON e."id"=l."entryId" JOIN "Account" a ON a."id"=l."accountId" JOIN "Branch" b ON b."id"=l."branchId"
     WHERE e."companyId"=${input.companyId}::uuid AND e."status" IN ('POSTED','REVERSED') AND e."postingDate">=${input.from} AND e."postingDate"<=${input.to}
-AND a."accountType"=${controlType} AND ${partyPredicate} ${branches}
+      AND e."voucherType"<>'OPENING'
+      AND a."accountType"=${controlType} AND ${partyPredicate} ${branches}
     ORDER BY e."postingDate", e."voucherNumber", l."lineNumber" LIMIT 5001`);
   if (rawLines.length > 5_000) throw new ApiError(422, "REPORT_TOO_LARGE", "This statement exceeds 5,000 lines. Select a shorter date range.");
   const aggregate = aggregates[0] || { openingDebit: zero(), openingCredit: zero(), periodDebit: zero(), periodCredit: zero() };
   const balanceEffect = (debit: Prisma.Decimal, credit: Prisma.Decimal) => input.kind === "customer" ? debit.minus(credit) : credit.minus(debit);
-  const openingBalance = round(balanceEffect(aggregate.openingDebit, aggregate.openingCredit));
+  const profileOpening = new Prisma.Decimal((party as any).openingBalance || 0);
+  const hasOpeningInGl = aggregate.openingDebit.gt(0) || aggregate.openingCredit.gt(0);
+  let openingBalance = round(balanceEffect(aggregate.openingDebit, aggregate.openingCredit));
+  if (!hasOpeningInGl && profileOpening.gt(0)) {
+    openingBalance = round(openingBalance.plus(profileOpening));
+  }
   let runningBalance = openingBalance;
   const transactions = rawLines.map((line) => {
     const movement = round(balanceEffect(line.debit, line.credit)); runningBalance = round(runningBalance.plus(movement));

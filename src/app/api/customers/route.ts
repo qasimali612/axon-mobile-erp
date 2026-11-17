@@ -5,6 +5,7 @@ import { permittedBranchIds, requirePermission } from "@/lib/auth";
 import { customerDraftSchema } from "@/lib/operations/validation";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/serializers";
+import { syncPartyOpeningBalance } from "@/lib/finance/party-opening-balance";
 
 export async function GET(request: Request) {
   try {
@@ -107,6 +108,18 @@ export async function POST(request: Request) {
 
       return created;
     });
+
+    if (body.openingBalance && Number(body.openingBalance) > 0) {
+      await syncPartyOpeningBalance({
+        kind: "customer",
+        partyId: customer.id,
+        companyId: context.company.id,
+        userId: context.user.id,
+        branchId: body.branchId,
+      }).catch((err) => {
+        console.error("Failed to sync customer opening balance JV:", err);
+      });
+    }
 
     return NextResponse.json(jsonSafe({ data: customer }), { status: 201 });
   } catch (error) {
