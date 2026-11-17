@@ -87,7 +87,52 @@ export function ReturnWorkspace({ currency, userId, permissions, initialType = "
     {creating && <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm"><div className="mx-auto my-6 w-full max-w-6xl rounded-2xl bg-white shadow-2xl"><div className="flex items-start justify-between border-b p-5"><div><h2 className="text-xl font-black">New {type === "SALES_RETURN" ? "customer sales" : "supplier purchase"} return</h2><p className="mt-1 text-xs text-slate-500">Select a posted source document, eligible products, and exact physical devices.</p></div><button onClick={() => setCreating(false)} className="rounded-lg p-2 text-slate-400"><X className="h-5 w-5"/></button></div><div className="space-y-5 p-5">
       {!source ? <><div className="flex gap-2"><input autoFocus className={inputClass} value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadSources(); }} placeholder={`Search posted ${type === "SALES_RETURN" ? "invoice/customer" : "receipt/supplier"}…`}/><button onClick={() => void loadSources()} className="rounded-lg bg-blue-600 px-4 text-sm font-bold text-white">Search</button></div><div className="grid max-h-[60vh] gap-2 overflow-y-auto">{busy ? <div className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600"/></div> : sources.map((document) => <button key={document.id} onClick={() => selectSource(document)} className="flex items-center justify-between rounded-xl border p-4 text-left hover:border-blue-400 hover:bg-blue-50"><div><b>{document.number}</b><p className="mt-1 text-xs text-slate-500">{document.party.code} · {document.party.name} · {formatDate(document.date)}</p></div><div className="text-right"><b className="text-blue-700">{document.lines.length} eligible lines</b><p className="text-[10px] text-slate-400">{document.branch.code} · {document.warehouse.code}</p></div></button>)}</div></> : <><button onClick={() => setSource(null)} className="inline-flex items-center gap-2 text-xs font-bold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>Choose another source</button><div className="grid gap-3 rounded-xl border bg-slate-50 p-4 sm:grid-cols-4"><div><span className="label">Source</span><b className="text-sm">{source.number}</b></div><div><span className="label">Party</span><b className="text-sm">{source.party.name}</b></div><label><span className="label">Return date</span><input type="date" className={inputClass} value={returnDate} onChange={(event) => setReturnDate(event.target.value)}/></label><label><span className="label">Return warehouse</span><select className={inputClass} value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)}>{sourceWarehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name} ({titleCase(warehouse.type)})</option>)}</select></label></div>
       <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[980px] text-left"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500"><tr><th className="px-3 py-3">Return</th><th className="px-3 py-3">Product</th><th className="px-3 py-3">Sold / received</th><th className="px-3 py-3">Already returned</th><th className="px-3 py-3">Return now</th><th className="px-3 py-3">Disposition</th><th className="px-3 py-3">Physical units / IMEIs</th></tr></thead><tbody className="divide-y">{source.lines.map((line: any) => { const draft = draftLines[line.id]; const serialized = ["IMEI", "SERIAL"].includes(line.product.trackingMethod); return <tr key={line.id} className="align-top text-xs"><td className="px-3 py-3"><input type="checkbox" checked={draft?.selected || false} onChange={(event) => patchLine(line.id, { selected: event.target.checked })}/></td><td className="px-3 py-3"><b>{line.product.name} · {line.variant.name}</b><span className="block font-mono text-[10px] text-slate-400">{line.variant.sku} · {line.product.trackingMethod}</span></td><td className="px-3 py-3">{String(line.originalQuantity)}</td><td className="px-3 py-3">{String(line.returnedQuantity)}</td><td className="px-3 py-3"><input disabled={serialized} type="number" min="0" max={line.remainingQuantity} step="0.0001" className="h-9 w-24 rounded border px-2" value={draft?.quantity || "0"} onChange={(event) => patchLine(line.id, { quantity: event.target.value, selected: Number(event.target.value) > 0 })}/><span className="ml-2 text-[10px] text-slate-400">Max {line.remainingQuantity}</span></td><td className="px-3 py-3">{type === "SALES_RETURN" ? <select className="h-9 rounded border px-2" value={draft?.disposition} onChange={(event) => patchLine(line.id, { disposition: event.target.value })}><option value="RESTOCK">Restock sellable</option><option value="QUARANTINE">Quarantine / damaged</option></select> : <b>Return to vendor</b>}</td><td className="px-3 py-3">{serialized ? <div className="max-h-28 space-y-1 overflow-y-auto">{line.units.filter((unit: any) => type === "SALES_RETURN" || unit.warehouseId === warehouseId).map((unit: any) => <label key={unit.id} className="flex items-center gap-2 rounded bg-slate-50 p-2"><input type="checkbox" checked={draft?.stockUnitIds.includes(unit.id) || false} onChange={() => toggleUnit(line.id, unit.id)}/><code className="text-[9px]">{unit.identifiers.map((identifier: any) => identifier.value).join(" / ")}</code></label>)}{!line.units.length && <span className="text-rose-600">No eligible physical units.</span>}</div> : <span className="text-slate-400">Quantity tracked</span>}</td></tr>; })}</tbody></table></div>
-      <div className="grid gap-3 sm:grid-cols-2"><label><span className="label">Return reason *</span><textarea rows={3} className="w-full rounded-lg border p-3 text-sm" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Specific reason, condition, and authorization reference…"/></label><label><span className="label">Notes</span><textarea rows={3} className="w-full rounded-lg border p-3 text-sm" value={notes} onChange={(event) => setNotes(event.target.value)}/></label></div><div className="flex items-center justify-between rounded-xl bg-blue-50 p-4"><p className="text-xs text-blue-900"><b>{selectedCount} line(s) selected.</b> No inventory or ledger effect occurs while this is a draft or awaiting approval.</p><div className="flex gap-2"><button disabled={busy} onClick={() => void createAndMaybeSubmit(false)} className="h-10 rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700">Save draft</button><button disabled={busy} onClick={() => void createAndMaybeSubmit(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-black text-white">{busy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}Save & submit</button></div></div></>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="label">Standard Return Reason *</span>
+            <span className="text-[10px] text-slate-400">Quick Presets</span>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-2">
+            {[
+              "Customer Changed Mind",
+              "Wrong Product Delivered",
+              "Product Defective",
+              "Physical Damage",
+              "Incorrect Model",
+              "Incorrect Color",
+              "Customer Exchange",
+              "Other",
+            ].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setReason(`${r}: Verified by store manager`)}
+                className="rounded bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={2}
+            className="w-full rounded-lg border p-2.5 text-xs"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Specific reason, customer remarks, and authorization reference…"
+          />
+        </div>
+        <label>
+          <span className="label">Notes & Remarks</span>
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border p-2.5 text-xs"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Additional internal audit notes or inspection details..."
+          />
+        </label>
+      </div><div className="flex items-center justify-between rounded-xl bg-blue-50 p-4"><p className="text-xs text-blue-900"><b>{selectedCount} line(s) selected.</b> No inventory or ledger effect occurs while this is a draft or awaiting approval.</p><div className="flex gap-2"><button disabled={busy} onClick={() => void createAndMaybeSubmit(false)} className="h-10 rounded-lg border border-blue-200 bg-white px-4 text-sm font-bold text-blue-700">Save draft</button><button disabled={busy} onClick={() => void createAndMaybeSubmit(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-black text-white">{busy ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}Save & submit</button></div></div></>}
     </div></div></div>}
   </div>;
 }

@@ -53,6 +53,33 @@
 
 ---
 
+### 2026-11-17 — Session 4: Priority 08 (Returns, Exchanges, Pricing & Promotions) Completion
+- **Action 1 (Inspection & Schema Verification):**
+  - Audited existing `StockReturn`, `StockReturnLine`, `StockReturnUnit`, `PriceList`, `ProductVariant` models.
+  - Confirmed that dual-SIM devices with two identifiers in `DeviceIdentifier` map to exactly 1 `PhysicalStockUnit` with `quantity: 1`.
+  - Confirmed `StockReturnDisposition`: `RESTOCK` restores unit to `IN_STOCK`; `QUARANTINE` routes unit to `QUARANTINED`.
+  - Confirmed `Payment` model supports direction `CUSTOMER_REFUND` (Dr AR 1100 / Cr Cash 1000 or Bank 1010) and `SUPPLIER_REFUND` (Cr AP 2000 / Dr Cash 1000 or Bank 1010).
+- **Action 2 (Direct Return Refund API & UI Actions):**
+  - Implemented `POST /api/returns/[id]/refund` (`src/app/api/returns/[id]/refund/route.ts`) enabling 1-click cash or bank refund disbursement directly against posted sales or purchase returns.
+  - Created `ReturnActions` component (`src/components/returns/return-actions.tsx`) and integrated into return detail view (`src/app/(erp)/returns/[id]/page.tsx`).
+  - Added standard quick presets and return reason chips in `ReturnWorkspace` (`src/components/returns/return-workspace.tsx`).
+- **Action 3 (Mobile Phone Exchange Workflow):**
+  - Implemented atomic mobile phone exchange API `POST /api/sales/exchanges` (`src/app/api/sales/exchanges/route.ts`) validating trade-in sold unit, verifying replacement in-stock unit, posting return and sales invoice, and settling differential (customer payment or refund).
+  - Built guided exchange wizard workspace (`src/components/sales/exchange-workspace.tsx`) and page (`src/app/(erp)/sales/exchanges/page.tsx`).
+- **Action 4 (Promotions Engine & UI):**
+  - Implemented promotion management API `POST /api/catalog/promotions` (`src/app/api/catalog/promotions/route.ts`).
+  - Implemented promotional evaluation engine (`src/lib/catalog/promotions.ts`).
+  - Built promotional campaign workspace (`src/components/catalog/promotion-workspace.tsx`) and page (`src/app/(erp)/catalog/promotions/page.tsx`).
+- **Action 5 (Quarantine Warehouses Seeded):**
+  - Seeded dedicated quarantine warehouses `ISB-QUARANTINE` and `HZR-QUARANTINE` (`type: QUARANTINE`, `allowReceiving: true`, `allowDispatch: false`) to safely receive damaged/defective units into restricted stock.
+- **Action 6 (Typecheck & Automated Acceptance Testing):**
+  - Ran `npm run typecheck` across all 4 partitions (`tsconfig.foundation.json`, `tsconfig.finance.json`, `tsconfig.ops.json`, `tsconfig.scripts.json`) with 0 errors.
+  - Built and executed `scripts/test_priority_08.mjs` verifying all 28 acceptance criteria (57 test assertions, 100% pass rate).
+  - Verified 44 posted General Ledger journals are strictly balanced ($\sum \text{Dr} = \sum \text{Cr}$) with 0 unbalanced vouchers.
+  - Verified GL 1200 (Merchandise Inventory) reconciles 100% with `StockBalance` valuation (Rs. 896,260.00).
+
+---
+
 ### Previous Sessions (Historical Log)
 - **Supplier Opening Balance Sync:** Added `syncPartyOpeningBalance` engine creating double-entry `OPENING` journal entries linked to party subledgers (Commit `753c27b`).
 - **POS & Sales Direct Posting:** Implemented direct-posting mode on sales invoices and POS cashier shifts without requiring maker-checker approval queues (Migration `20261116160000`).

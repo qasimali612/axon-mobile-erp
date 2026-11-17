@@ -22,8 +22,8 @@
 | **10** | Inventory & Stock Movements | P04 | `StockBalance`, `InventoryMovement`| `/api/inventory/*` | `/(erp)/inventory/*` | **Implemented** | Stock transfers, adjustments, stock counts. |
 | **11** | Sales Management | P05 | `SalesInvoice`, `SalesInvoiceLine` | `/api/sales/invoices` | `/(erp)/sales` | **Implemented** | 11 sales invoices posted in production DB. |
 | **12** | POS / Retail Counter | P05 | `SalesInvoice`, `PaymentMethod` | `/api/sales/invoices`, `/pos` | `/(erp)/pos` | **Implemented** | Barcode/IMEI scanning, multi-tender payment. |
-| **13** | Sales & Purchase Returns | P08 | `StockReturn`, `StockReturnUnit` | `/api/returns` | `/(erp)/returns` | **Implemented** | Resalable vs damaged dispositions. |
-| **14** | Pricing & Discounts | P08 | `PriceList`, `PriceListItem` | `/api/catalog/price-lists` | `/(erp)/catalog/price-lists` | **Implemented** | Retail, wholesale, dealer pricing tiers. |
+| **13** | **Sales & Purchase Returns** | P08 | `StockReturn`, `StockReturnUnit` | `/api/returns` | `/(erp)/returns` | **Passed** | Resalable vs damaged dispositions, 1-click refund disbursement, exchange wizard. |
+| **14** | **Pricing & Discounts** | P08 | `PriceList`, `PriceListItem` | `/api/catalog/price-lists`, `/api/catalog/promotions` | `/(erp)/catalog/price-lists`, `/(erp)/catalog/promotions` | **Passed** | Promotional campaigns, price floors, date windows, override controls. |
 | **15** | Expense Management | P07 | `JournalEntry`, `JournalEntryLine` | `/api/finance/expenses` | `/(erp)/finance/expenses` | **Passed** | 11 default categories seeded, direct GL post, voucher print, running balances. |
 | **16** | General Ledger Accounting | P07 | `Account`, `JournalEntry` | `/api/finance/journals` | `/(erp)/finance/journals` | **Passed** | Double-entry invariant verified (0.00 diff). |
 | **17** | Accounts Receivable | P06 | `Customer`, `PaymentAllocation` | `/api/finance/subledgers` | `/(erp)/finance/subledgers` | **Passed** | Subledger statements with running balance & 100% GL match. |

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, CheckCircle2, ExternalLink, FileText, Package, Printer, RotateCcw, ShieldAlert } from "lucide-react";
+import { ReturnActions } from "@/components/returns/return-actions";
 import { Badge } from "@/components/ui/badge";
 import { requirePagePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -72,6 +73,16 @@ export default async function ReturnDetailPage({ params }: PageProps) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <ReturnActions
+            returnId={doc.id}
+            returnNumber={doc.returnNumber}
+            returnType={doc.returnType}
+            status={doc.status}
+            grandTotal={Number(doc.grandTotal)}
+            currency={currency}
+            hasJournal={Boolean(doc.journalEntry)}
+          />
+
           {doc.journalEntry ? (
             <Link
               href={`/finance/journals/${doc.journalEntry.id}`}

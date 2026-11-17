@@ -19,7 +19,7 @@
 | **05** | **Sales Management & Professional POS** | **Passed** | 11 invoices, Rs. 456,494 revenue, Rs. 44,414 profit, thermal print | Dual-SIM sales & COGS verified |
 | **06** | **Customer & Supplier Management** | **Passed** | 3 customers, 2 suppliers; 27/27 tests passed; GL 1100 & 2000 100% reconciled | Complete profile dashboards, running balance subledgers, aging & statements |
 | **07** | **Cash, Bank & Expense Management** | **Passed** | 24/24 acceptance tests passed; GL 1000 (Rs. 47,410) & GL 1010 (Rs. 3,816) 100% reconciled; Liquidity Rs. 51,226; 11 expense categories seeded; Contra transfer integrity verified | Ready for Priority 08 |
-| **08** | **Returns, Exchanges, Pricing & Promotions**| **Not Started** | Return disposition states present | Test exchange & refund cash effects |
+| **08** | **Returns, Exchanges, Pricing & Promotions**| **Passed** | 57/57 acceptance tests passed (`scripts/test_priority_08.mjs`); Sales/purchase returns, mobile phone exchange wizard, 1-click refund disbursement, promotional campaigns, price floors, zero unbalanced vouchers | Ready for Priority 09 |
 | **09** | **Branches, Warehouses & Users** | **Not Started** | 2 branches (`HZR`, `ISB`), 2 warehouses | Test branch isolation & warehouse scoping |
 | **10** | **Incentives, Rebates, Fixed Assets & Staff**| **Not Started** | Asset register & depreciation present | Test incentive calculations & settlements |
 | **11** | **Complete Reporting & BI Center** | **Not Started** | 12-category hub, 27 report keys | Build all 14 report groups with real queries |

@@ -122,4 +122,44 @@
 - **Priority 05 (Sales Management & POS):** **PASSED**
 - **Priority 06 (Customer & Supplier Management):** **PASSED**
 - **Priority 07 (Cash, Bank & Expense Management):** **PASSED** (24/24 Tests Passed)
-- **Next Priority:** **Priority 08 — Returns, Exchanges, Pricing & Promotions**
+- **Status:** **PASSED (100% Audit Verified)**
+- **Next Priority:** **Priority 08 — Returns, Exchanges, Pricing & Promotions (Completed)**
+
+---
+
+## 8. Priority 08: Returns, Exchanges, Pricing & Promotions Verification
+
+- **Verification Date:** November 2026
+- **Test Suite Script:** `scripts/test_priority_08.mjs`
+- **Result:** **57 / 57 Tests Passed (100.0%)**
+- **Test Points Covered:**
+  1. Serialized handset (IMEI) return validation against posted sales invoices.
+  2. Foreign IMEI rejection (`INVALID_RETURN_UNIT`).
+  3. Duplicate IMEI return prevention (`DUPLICATE_STOCK_UNIT`).
+  4. Dual-SIM handset integrity (1 physical unit = 1 stock unit, 2 identifiers).
+  5. Bulk accessory quantity return validation.
+  6. Return quantity exceeding sold quantity rejection (`RETURN_QUANTITY_EXCEEDED`).
+  7. Quarantine warehouse routing for damaged units (`ISB-QUARANTINE` -> `QUARANTINED`).
+  8. Resalable return routing (`ISB-RETAIL` -> `IN_STOCK`).
+  9. Customer refund disbursement API (`CUSTOMER_REFUND` via Cash 1000 / Bank 1010).
+  10. Customer AR credit note adjustment (Credit AR 1100).
+  11. Supplier purchase return posting (Debit AP 2000, Credit Inventory 1200).
+  12. Supplier subledger payable balance reduction.
+  13. Mobile phone exchange with additional customer payment (`CUSTOMER_RECEIPT`).
+  14. Mobile phone exchange with customer refund/credit (`CUSTOMER_REFUND`).
+  15. Replacement handset transition to `SOLD` exactly once without duplicate revenue or COGS.
+  16. Stock valuation reconciliation (StockBalance Rs. 896,260 reconciles 100% with GL 1200).
+  17. Promotional price list creation with effective date window (`effectiveFrom`..`effectiveTo`).
+  18. Historical sales invoice price integrity (zero retroactive price modifications).
+  19. Percentage and fixed discount evaluation engine.
+  20. Expired promotional campaign rejection (`PRICE_LIST_OUT_OF_WINDOW`).
+  21. Minimum selling price floor enforcement (`PRICE_BELOW_MINIMUM`).
+  22. Documented supervisory override with written justification.
+  23. Sales return double-entry accounting (Dr Sales Revenue 4000, Cr AR 1100, Dr Inventory 1200, Cr COGS 5000).
+  24. Purchase return double-entry accounting (Dr AP 2000, Cr Inventory 1200).
+  25. Authoritative General Ledger zero-imbalance invariant: 44 posted journals verified, 0 unbalanced vouchers.
+  26. Idempotency key protection and duplicate posting immunity.
+  27. Branch context scoping and cross-branch prevention (`SOURCE_CONTEXT_MISMATCH`).
+  28. Return and exchange report queries matching authoritative database records.
+- **Status:** **PASSED (100% Audit Verified)**
+- **Next Priority:** **Priority 09 — Branches, Warehouses & User Permissions**
