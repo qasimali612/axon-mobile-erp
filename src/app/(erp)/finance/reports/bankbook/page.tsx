@@ -19,3 +19,4 @@ export default async function BankbookPage({
   const query = sp.toString();
   redirect(`/finance/banking${query ? `?${query}` : ""}`);
 }
+

@@ -141,7 +141,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     const input = z.object({ reason: z.string().trim().min(5).max(500) }).parse(await request.json());
     const branch = await prisma.branch.findFirst({
       where: { id, companyId: context.company.id, archivedAt: null },
-      include: { warehouses: { where: { isActive: true } } },
+      include: { warehouses: { where: { isActive: true, archivedAt: null } } },
     });
     if (!branch) throw new ApiError(404, "NOT_FOUND", "Branch not found.");
     if (branch.warehouses.length) {
@@ -150,6 +150,10 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
     await prisma.$transaction(async (tx) => {
       await tx.branch.update({ where: { id }, data: { isActive: false, archivedAt: new Date() } });
+      await tx.warehouse.updateMany({
+        where: { branchId: id, archivedAt: null },
+        data: { isActive: false, archivedAt: new Date() },
+      });
       await appendAudit(
         {
           companyId: context.company.id,

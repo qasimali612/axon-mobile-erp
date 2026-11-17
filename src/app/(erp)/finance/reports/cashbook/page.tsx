@@ -19,3 +19,4 @@ export default async function CashbookPage({
   const query = sp.toString();
   redirect(`/finance/reports/cash-in-hand${query ? `?${query}` : ""}`);
 }
+

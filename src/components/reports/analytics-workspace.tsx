@@ -561,3 +561,4 @@ export function BusinessAnalyticsWorkspace({ data, currency }: Props) {
     </div>
   );
 }
+

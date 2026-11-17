@@ -237,7 +237,7 @@ async function main() {
   );
 
   // Test 15: IMEI Registry verification
-  const imeiReport = await getCompleteImeiRegistryReport({ companyId, take: 50 });
+  const imeiReport = await getCompleteImeiRegistryReport({ companyId, take: 50, branchFilter: {}, canViewCost: true });
   assert(
     Array.isArray(imeiReport),
     "Complete IMEI registry report generates without duplicates or integrity errors",

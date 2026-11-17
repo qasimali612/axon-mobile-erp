@@ -8,3 +8,4 @@ export default async function ExpensePrintPage({
   const { id } = await params;
   redirect(`/finance/journals/${id}/print`);
 }
+

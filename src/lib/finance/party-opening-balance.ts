@@ -184,3 +184,4 @@ export async function syncPartyOpeningBalance(params: {
 
   return posted;
 }
+
