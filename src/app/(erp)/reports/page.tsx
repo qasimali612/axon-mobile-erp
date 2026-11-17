@@ -167,6 +167,18 @@ export default async function ReportsHubPage({ searchParams }: { searchParams: S
               <FileSpreadsheet className="h-3.5 w-3.5" /> Statements (P&L / BS / Cash Flow)
             </Link>
             <Link
+              href="/reports/branch-comparison"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white hover:bg-indigo-700"
+            >
+              <Building2 className="h-3.5 w-3.5" /> Branch Comparison (HZR vs ISB)
+            </Link>
+            <Link
+              href="/reports/analytics"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-purple-600 px-3 text-xs font-bold text-white hover:bg-purple-700"
+            >
+              <TrendingUp className="h-3.5 w-3.5" /> Business Analytics
+            </Link>
+            <Link
               href="/finance/reports/cash-in-hand"
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
             >

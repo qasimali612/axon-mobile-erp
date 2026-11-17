@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { requirePagePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatMoney, titleCase } from "@/lib/utils";
+import { getBranchComparisonReport } from "@/lib/reports/services/branch-comparison";
 
 export default async function DashboardPage() {
   const context = await requirePagePermission("dashboard.view");
@@ -44,6 +45,7 @@ export default async function DashboardPage() {
   const now = new Date();
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
 
   // 6 months ago for trend analysis
   const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
@@ -54,6 +56,12 @@ export default async function DashboardPage() {
     totalImeis,
     salesToday,
     salesMonth,
+    salesYtd,
+    cashGl,
+    bankGl,
+    receivablesGl,
+    payablesGl,
+    branchComparison,
     purchasesToday,
     purchasesMonth,
     submittedReceipts,
@@ -104,6 +112,40 @@ export default async function DashboardPage() {
       _count: true,
       _sum: { grandTotal: true, costTotal: true },
     }),
+
+    // Sales Year to Date
+    prisma.salesInvoice.aggregate({
+      where: { companyId, status: "POSTED", reversalOfId: null, invoiceDate: { gte: yearStart } },
+      _count: true,
+      _sum: { grandTotal: true, costTotal: true },
+    }),
+
+    // Cash on Hand (GL 1000)
+    prisma.journalEntryLine.aggregate({
+      where: { entry: { companyId, status: { in: ["POSTED", "REVERSED"] } }, account: { code: "1000" } },
+      _sum: { baseDebit: true, baseCredit: true },
+    }),
+
+    // Bank (GL 1010)
+    prisma.journalEntryLine.aggregate({
+      where: { entry: { companyId, status: { in: ["POSTED", "REVERSED"] } }, account: { code: "1010" } },
+      _sum: { baseDebit: true, baseCredit: true },
+    }),
+
+    // Receivables (GL 1100)
+    prisma.journalEntryLine.aggregate({
+      where: { entry: { companyId, status: { in: ["POSTED", "REVERSED"] } }, account: { code: "1100" } },
+      _sum: { baseDebit: true, baseCredit: true },
+    }),
+
+    // Payables (GL 2000)
+    prisma.journalEntryLine.aggregate({
+      where: { entry: { companyId, status: { in: ["POSTED", "REVERSED"] } }, account: { code: "2000" } },
+      _sum: { baseDebit: true, baseCredit: true },
+    }),
+
+    // Branch Performance Comparison (HZR vs ISB)
+    getBranchComparisonReport({ companyId, from: monthStart, to: now }),
 
     // Purchases Today
     prisma.purchaseReceipt.aggregate({
@@ -241,6 +283,13 @@ export default async function DashboardPage() {
     .reduce((sum, j) => sum + j.lines.reduce((lSum, l) => lSum + Number(l.baseDebit), 0), 0);
 
   const netProfitMonth = grossProfitMonth - currentMonthExpenses;
+
+  // Working Capital & Treasury GL Balances
+  const cashBalance = Number(cashGl._sum.baseDebit || 0) - Number(cashGl._sum.baseCredit || 0);
+  const bankBalance = Number(bankGl._sum.baseDebit || 0) - Number(bankGl._sum.baseCredit || 0);
+  const receivablesBalance = Number(receivablesGl._sum.baseDebit || 0) - Number(receivablesGl._sum.baseCredit || 0);
+  const payablesBalance = Number(payablesGl._sum.baseCredit || 0) - Number(payablesGl._sum.baseDebit || 0);
+  const salesYtdTotal = Number(salesYtd._sum.grandTotal || 0);
 
   // Monthly trend grouping (last 6 months)
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -432,6 +481,178 @@ export default async function DashboardPage() {
               Net Profit: {formatMoney(netProfitMonth.toString(), currencyCode)}
             </p>
           </Link>
+        </div>
+      </div>
+
+      {/* Treasury & Working Capital Grid (GL Verified) */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Treasury & Working Capital (Live Ledger Reconciled)
+          </h2>
+          <Link href="/finance/reports" className="text-xs font-semibold text-blue-700 hover:underline">
+            Financial Statements
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Link
+            href="/finance/cash-book"
+            className="surface group p-5 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-float"
+          >
+            <div className="flex items-start justify-between">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                <Wallet className="h-[18px] w-[18px]" />
+              </span>
+              <ArrowUpRight className="h-4 w-4 text-slate-300 group-hover:text-emerald-600 transition" />
+            </div>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
+              {formatMoney(cashBalance.toString(), currencyCode)}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">Cash on Hand (GL 1000)</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Physical cash across authorized store tills
+            </p>
+          </Link>
+
+          <Link
+            href="/finance/bank"
+            className="surface group p-5 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-float"
+          >
+            <div className="flex items-start justify-between">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-700">
+                <Landmark className="h-[18px] w-[18px]" />
+              </span>
+              <ArrowUpRight className="h-4 w-4 text-slate-300 group-hover:text-blue-600 transition" />
+            </div>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
+              {formatMoney(bankBalance.toString(), currencyCode)}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">Bank Accounts (GL 1010)</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              {bankAccounts.length} active business bank accounts
+            </p>
+          </Link>
+
+          <Link
+            href="/finance/subledgers"
+            className="surface group p-5 transition hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-float"
+          >
+            <div className="flex items-start justify-between">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                <Receipt className="h-[18px] w-[18px]" />
+              </span>
+              <ArrowUpRight className="h-4 w-4 text-slate-300 group-hover:text-amber-600 transition" />
+            </div>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
+              {formatMoney(receivablesBalance.toString(), currencyCode)}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">Trade Receivables (GL 1100)</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Outstanding from {customersCount} credit customers
+            </p>
+          </Link>
+
+          <Link
+            href="/finance/subledgers"
+            className="surface group p-5 transition hover:-translate-y-0.5 hover:border-rose-200 hover:shadow-float"
+          >
+            <div className="flex items-start justify-between">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-50 text-rose-700">
+                <Scale className="h-[18px] w-[18px]" />
+              </span>
+              <ArrowUpRight className="h-4 w-4 text-slate-300 group-hover:text-rose-600 transition" />
+            </div>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
+              {formatMoney(payablesBalance.toString(), currencyCode)}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-700">Trade Payables (GL 2000)</p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Payable to {suppliersCount} vendor partners
+            </p>
+          </Link>
+        </div>
+      </div>
+
+      {/* Multi-Branch Operational Comparison Summary */}
+      <div className="surface p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-blue-700" />
+              <h2 className="text-sm font-bold text-slate-900">Branch Performance Overview (Current Month)</h2>
+            </div>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Side-by-side operational comparison between Hazro Central and Islamabad branches.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/reports/analytics">
+              <Button variant="outline" size="sm">
+                Business Analytics
+              </Button>
+            </Link>
+            <Link href="/reports/branch-comparison">
+              <Button variant="primary" size="sm">
+                Full Branch Comparison
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {branchComparison.branches.map((b) => (
+            <div
+              key={b.branchId}
+              className="rounded-xl border border-slate-200/80 bg-slate-50/40 p-4 hover:border-blue-200 transition"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                <div>
+                  <span className="font-bold text-slate-900 text-sm">{b.name}</span>
+                  <span className="ml-2 text-xs text-slate-400">({b.code})</span>
+                  {b.isHeadOffice && (
+                    <Badge tone="blue" className="ml-2 text-[10px] py-0">
+                      Head Office
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-slate-600">
+                  {b.salesInvoiceCount} Invoices
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Net Sales</p>
+                  <p className="font-bold text-slate-900 mt-0.5">
+                    {formatMoney(b.netSales.toString(), currencyCode)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Gross Profit</p>
+                  <p className="font-bold text-emerald-600 mt-0.5">
+                    {formatMoney(b.grossProfit.toString(), currencyCode)}
+                    <span className="text-[10px] text-slate-400 font-normal ml-1">
+                      ({b.grossProfitMarginPercent}%)
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Direct OPEX</p>
+                  <p className="font-bold text-rose-600 mt-0.5">
+                    {formatMoney(b.operatingExpenses.toString(), currencyCode)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">Stock Valuation</p>
+                  <p className="font-bold text-blue-700 mt-0.5">
+                    {formatMoney(b.inventoryValuation.toString(), currencyCode)}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {b.availableHandsets} handsets
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

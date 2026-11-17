@@ -12,7 +12,7 @@
 |---|---|:---:|---|---|---|:---:|---|
 | **01** | Technical Foundation & Auth | P01 | `User`, `Session`, `Company` | `/api/auth/*` | Full Shell | **Passed** | 100% TS compile pass, 10 active sessions. |
 | **02** | **Organization & Branches** | P09 | `Company`, `Branch`, `Warehouse` | `/api/branches`, `/api/warehouses` | `/(erp)/organization` | **Passed** | 2 branches (`HZR`, `ISB`), 4 operational warehouses, branch metrics & profiles. |
-| **03** | Product & Item Master | P02 | `Product`, `ProductVariant` | `/api/products` | `/(erp)/catalog/products` | **In Progress** | 21 products, IMEI and non-IMEI options. |
+| **03** | Product & Item Master | P02 | `Product`, `ProductVariant` | `/api/products` | `/(erp)/catalog/products` | **Passed** | 85 products (IMEI smartphones, feature phones, accessories), standard variants. |
 | **04** | Brand & Model Management | P02 | `Brand`, `ProductCategory` | `/api/catalog/masters` | `/(erp)/catalog/masters` | **Implemented** | Master categories and brands. |
 | **05** | Barcode & IMEI Management | P04 | `PhysicalStockUnit`, `DeviceIdentifier` | `/api/inventory/imei-audit` | `/(erp)/inventory/imei` | **Implemented** | 1 phone = 1 unit; 12 dual-SIM, 17 single-SIM. |
 | **06** | Supplier Management | P06 | `Supplier` | `/api/suppliers` | `/(erp)/parties` | **Passed** | Master dashboard, running subledger, 100% GL reconciliation. |
@@ -36,7 +36,7 @@
 | **24** | Budget Management | P10 | `Budget`, `BudgetLine` | `/api/finance/budgets` | `/(erp)/finance/budgets` | **Implemented** | Fiscal budgets & variance reporting. |
 | **25** | Tax Management | P07 | `TaxRule` | `/api/catalog/masters` | `/(erp)/catalog/masters` | **Implemented** | Configurable tax rates & GL mapping. |
 | **26** | Accounting Period Mgmt | P07 | `FiscalYear`, `AccountingPeriod` | `/api/finance/periods` | `/(erp)/finance/periods` | **Implemented** | Period locking & closing controls. |
-| **27** | Reporting Center & BI | P11 | Aggregated Services | `/api/reports/operations` | `/(erp)/reports` | **In Progress** | 12 report groups, 27 operational keys. |
+| **27** | Reporting Center & BI | P11 | Aggregated Services | `/api/reports/operations` | `/(erp)/reports`, `/(erp)/reports/branch-comparison`, `/(erp)/reports/analytics` | **Passed** | 32/32 tests passed; Branch comparison, BI analytics dashboard, GL-reconciled management dashboard. |
 | **28** | **Approval Command Center** | P09 | `ApprovalPolicy` | `/api/approvals` | `/(erp)/approvals` | **Passed** | Direct-posting mode enabled by default; atomic approval and posting verified. |
 | **29** | **RBAC & Permissions** | P09 | `Role`, `Permission`, `UserRole` | `/api/roles`, `/api/users` | `/(erp)/access/*` | **Passed** | 10 standard roles, 160 server permissions, branch & warehouse isolation. |
 | **30** | Audit Trail & History | P12 | `AuditLog` | `/api/audit` | `/(erp)/audit` | **Implemented** | Immutable audit logs with actor tracking. |
