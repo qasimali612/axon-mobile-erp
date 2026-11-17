@@ -33,24 +33,33 @@
 
 ---
 
-## 3. Database Entity Verification Summary
-- **Companies:** 1 (`Gondal Mobile Center`)
-- **Branches:** 2 (`HZR: Hazro Central`, `ISB: Islamabad`)
-- **Warehouses:** 2 (`HZR-MAIN: Hazro Main Warehouse`, `ISB-RETAIL: Main Shop`)
-- **Products:** 21 (19 IMEI-tracked, 2 Quantity-tracked)
-- **Product Categories:** 4 (`Mobile Phone`, `Accessories`, `Spare Parts`, `Other Trading Products`)
-- **Brands:** 9 (`Samsung`, `Infinix`, `Tecno`, `OPPO`, `Realme`, `VIVO`, `Itel`, `QMobile`, `Nexel`)
-- **Physical Stock Units:** 29 (20 IN_STOCK, 9 SOLD)
-- **Device Identifiers (IMEIs):** 41 (24 dual-SIM + 17 single-SIM)
-- **Customers:** 3
-- **Suppliers:** 2
-- **Journal Entries:** 48 (All balanced, 0 exceptions)
-- **Bank Accounts:** 1 (0001 · Faysal Bank)
-- **Bank Transactions:** 16 posted (Live Balance: Rs. 3,816.00)
+## 3. Priority 03 Acceptance Verification (Purchase & Goods Receiving)
+
+| Test Case | Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **TC-P03-01** | Direct & PO Goods Receiving Post | Creates physical units and increments inventory | ISB-GRN-FY2026-27-000001 posted with 7 physical units in `IN_STOCK` | **Passed** |
+| **TC-P03-02** | Double-Entry Purchase Journal | Debit Merchandise Inventory, Credit Trade Payables | ISB-PV-FY2026-27-000001 posted (Debit Rs. 278,900 / Credit Rs. 278,900) | **Passed** |
+| **TC-P03-03** | Stock Movement Attribution | Each received handset creates `PURCHASE_RECEIPT` movement | 7 movements verified linking receipt to physical units & GL voucher | **Passed** |
+| **TC-P03-04** | Unique IMEI Duplicate Guard | Receiving duplicate IMEI is blocked across company | Attempting to re-receive IMEI `351929938624488` is rejected by DB index | **Passed** |
+| **TC-P03-05** | Official Printable GRN | Print layout with QR code, supplier, landed cost, signatures | `src/app/(erp)/goods-receipts/[id]/print/page.tsx` verified | **Passed** |
 
 ---
 
-## 4. Acceptance Status
-- **Priority 01:** **PASSED**
-- **Priority 02:** **PASSED**
-- **Next Priority:** **Priority 03 — Purchase and Goods Receiving**
+## 4. Priority 04 Acceptance Verification (Inventory & IMEI Management)
+
+| Test Case | Description | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :---: |
+| **TC-P04-01** | Stock Valuation vs GL 1200 Reconciliation | Warehouse valuation matches GL Merchandise Inventory | StockBalance Rs. 896,260 matches GL 1200 Rs. 896,260 (Diff: Rs. 0.00) | **Passed** |
+| **TC-P04-02** | Zero Negative Stock Invariant | Accidental negative inventory prohibited | 22 stock balance records scanned across warehouses; 0 negative stock | **Passed** |
+| **TC-P04-03** | Handset Dual-SIM Invariant | 1 handset = 1 unit; dual-SIM holds 2 slots | 12 dual-SIM handsets hold 2 IMEIs each under 1 stock unit; total 29 units | **Passed** |
+| **TC-P04-04** | IMEI Uniqueness Invariant | 0 duplicate IMEIs registered in company | Querying duplicate normalized IMEIs returned 0 duplicates | **Passed** |
+| **TC-P04-05** | Handset Status Tracking | Status correctly categorizes physical units | 20 IN_STOCK, 9 SOLD verified in physical stock unit register | **Passed** |
+
+---
+
+## 5. Acceptance Status
+- **Priority 01 (Foundation):** **PASSED**
+- **Priority 02 (Product & Catalog):** **PASSED**
+- **Priority 03 (Purchases & Receiving):** **PASSED**
+- **Priority 04 (Inventory & IMEI Management):** **PASSED**
+- **Next Priority:** **Priority 05 — Sales Management & Professional POS**
