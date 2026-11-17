@@ -87,13 +87,35 @@ async function issueVoucherNumber(
   const cleanBranch = (branch.documentPrefix || "BR").trim().replace(/[^A-Za-z0-9]/g, "") || "BR";
   const cleanSuffix = documentType === "JOURNAL_REVERSAL" ? "RV" : "JV";
 
-  return nextDocumentNumber(tx, {
+  let candidate = await nextDocumentNumber(tx, {
     companyId,
     branchId,
     documentType,
     fiscalYear,
     prefix: `${cleanBranch}-${cleanSuffix}`,
   });
+
+  // Collision guard: if candidate voucher number already exists, advance sequence until unique
+  let exists = await tx.journalEntry.findFirst({
+    where: { companyId, voucherNumber: candidate },
+    select: { id: true },
+  });
+
+  while (exists) {
+    candidate = await nextDocumentNumber(tx, {
+      companyId,
+      branchId,
+      documentType,
+      fiscalYear,
+      prefix: `${cleanBranch}-${cleanSuffix}`,
+    });
+    exists = await tx.journalEntry.findFirst({
+      where: { companyId, voucherNumber: candidate },
+      select: { id: true },
+    });
+  }
+
+  return candidate;
 }
 
 async function getJournalForWorkflow(tx: Prisma.TransactionClient, id: string, companyId: string) {
